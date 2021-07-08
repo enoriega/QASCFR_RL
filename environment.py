@@ -1,4 +1,5 @@
 import itertools as it
+from collections import defaultdict
 from functools import lru_cache
 from typing import Set, Tuple, List, Optional, AbstractSet, FrozenSet, Collection, Dict, NamedTuple, \
     cast
@@ -12,9 +13,11 @@ from spacy.language import Language
 
 import utils
 from actions import Query, QueryType
-from data import QASCInstance, Pair
-from lucene.ir import QASCIndexSearcher
-from nlp import EmbeddingSpaceHelper, preprocess
+from parsing import QASCInstance, Pair
+
+from machine_reading.ie import RedisWrapper
+from machine_reading.ir import QASCIndexSearcher
+from nlp import EmbeddingSpaceHelper, preprocess, load_stop_words
 from tfidf import TfIdfHelper
 from topic_modeling import TopicsHelper
 
@@ -56,12 +59,27 @@ def _get_eligible_pairs(kg: Graph, log: FrozenSet[FrozenSet[str]], singletons: F
 def _determine_outcome(start, end, kg) -> Tuple[bool, Optional[List[str]]]:
     """ Factored out this method to leverage the LRU decorator """
     # Find a the shortest path between the endpoints
-    try:
-        shortest_path = nx.shortest_path(kg, start, end)  # TODO Change the outcome criteria here
-        result = True, shortest_path
-    except NetworkXNoPath:
-        result = False, None
+
+    # shortest_path = nx.shortest_path(kg, start, end)  # TODO Change the outcome criteria here
+    paths = list(nx.all_simple_paths(kg, start, end, 3))
+    if len([p for p in paths if len(p) == 3]) >= 100:
+        finished = True
+    else:
+        finished = False
+
+    result = finished, paths
+
     return result
+
+
+def get_terms(phrase:str) -> str:
+    # Lower case and tokenize
+    terms = phrase.lower().split()
+
+    # filter stop wrods
+    kept = {t for t in terms if t not in load_stop_words()}
+
+    return " ".join(kept)
 
 
 class Environment:
@@ -72,14 +90,16 @@ class Environment:
 
     def __init__(self, problem: QASCInstance, max_iterations: int, use_embeddings: bool, num_top_entities: int,
                  seed: int, lucene: QASCIndexSearcher,
-                 vector_space: EmbeddingSpaceHelper, topics_helper: TopicsHelper,
-                 tfidf_helper: TfIdfHelper, nlp: Language) -> None:
+                 # vector_space: EmbeddingSpaceHelper, topics_helper: TopicsHelper,
+                 # tfidf_helper: TfIdfHelper, nlp: Language) -> None:
+                 ) -> None:
         self.problem = problem
         self.lucene = lucene
-        self._vector_space = vector_space
-        self._topics_helper = topics_helper
-        self._tfidf_helper = tfidf_helper
-        self._nlp = nlp
+        self.redis = RedisWrapper()
+        # self._vector_space = vector_space
+        # self._topics_helper = topics_helper
+        # self._tfidf_helper = tfidf_helper
+        # self._nlp = nlp
         self._seed = seed
         self._use_embeddings = use_embeddings
         self.max_iterations = max_iterations
@@ -133,9 +153,13 @@ class Environment:
         start = self.problem.question
         end = self.problem.answer
 
-        result = _determine_outcome(start, end, kg)
+        finished, path = _determine_outcome(start, end, kg)
 
-        return result
+        # Time out when the max number of iterations is reached
+        if not finished and self.iterations == self.max_iterations:
+            finished = True
+
+        return finished, path
 
     @property
     def path(self) -> Optional[List[str]]:
@@ -246,17 +270,32 @@ class Environment:
             kg.add_nodes_from((start, end))  # A bare bones KG contains the disconnected endpoints
             # Iterate over the documents to extract the edges that will be stitch together in the KG
             # This mimics the information extraction step on a more realistic scenario
+            # Create an inverted index of extractions
+            inverted_index = defaultdict(set)
+            index = defaultdict(set)
             if len(docs) > 0:
-                # TODO implement this off-line from my processors grammar
-                # # Get all the elements of the documents
-                # elements = (it.chain.from_iterable(self.index[d] for d in docs))
-                # # Split the elements in pairs and nodes
-                # nodes, pairs = utils.partition(lambda e: type(e) == Pair, elements)
-                #
-                # # Add them separately to the KG
-                # kg.add_nodes_from(nodes)
-                # kg.add_edges_from(pairs)
-                pass
+                # Get all the elements of the documents
+                for doc in (docs | {start, end}):
+                    # Get the extractions from the cached redis client
+                    extractions = self.redis.get_extractions(doc)
+                    # Populate the index
+                    index[doc] = extractions
+                    # Populate the inverted index
+                    for extraction in extractions:
+                        inverted_index[extraction].add(doc)
+
+                # Add the documents as nodes in the graph
+                kg.add_nodes_from(docs)
+                # Build the edges using frozensets to reduce density in the graph
+                edges = set()
+                for doc, extractions in index.items():
+                    start = doc
+                    for extraction in extractions:
+                        for end in inverted_index[extraction]:
+                            if start != end:
+                                edges.add(frozenset((start, end)))
+                # Add the built edges into the KG
+                kg.add_edges_from(edges)
 
             # Store it in the cache
             cache[cache_key] = kg
@@ -273,30 +312,25 @@ class Environment:
         if query.endpoints is None or len(query.endpoints) == 0:
             return set(), qt
         else:
-            if query.type is QueryType.Cascade:
-                qt = QueryType.And
-                a, b = query.endpoints
-                query_str = f'"{a}" AND "{b}"'
-                result = lucene.search(query_str)
-                if len(result) == 0:
-                    qt = QueryType.Or
-                    query_str = f'"{a}" OR "{b}"'
-                    result = lucene.search(query_str)
+            if query.type is QueryType.Singleton:
+                entity = query.endpoints
+                query_str = entity
+                max_hits = 10
             else:
-                if query.type is QueryType.Singleton:
-                    entity = query.endpoints
-                    query_str = entity
+                a, b = query.endpoints
+                terms_a = get_terms(a)
+                terms_b = get_terms(b)
+                if query.type == QueryType.And:
+                    query_str = f'{terms_a} {terms_b}'
+                    max_hits = 10
+                elif query.type == QueryType.Or:
+                    query_str = f'({terms_a}) OR ({terms_b})'
+                    max_hits = 20
                 else:
-                    a, b = query.endpoints
-                    if query.type == QueryType.And:
-                        query_str = f'"{a}" AND "{b}"'
-                    elif query.type == QueryType.Or:
-                        query_str = f'"{a}" OR "{b}"'
-                    else:
-                        # Shouldn't really fall into this case
-                        raise Exception("Invalid query")
+                    # Shouldn't really fall into this case
+                    raise Exception("Invalid query")
 
-                result = lucene.search(query_str)
+            result = lucene.search(query_str, max_hits)
 
             docs = {doc for doc, score in result}
 

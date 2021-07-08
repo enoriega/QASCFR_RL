@@ -10,7 +10,7 @@ from pandas import DataFrame
 from rlpyt.utils.launching.affinity import encode_affinity
 from tqdm import tqdm
 
-from data import Results, Pair, QASCInstance
+from parsing import Results, Pair, QASCInstance
 
 
 # from environment import ResultsKey

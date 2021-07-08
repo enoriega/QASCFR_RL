@@ -11,10 +11,10 @@ from rlpyt.spaces.float_box import FloatBox
 from rlpyt.spaces.int_box import IntBox
 from spacy.language import Language
 
-import data
+import parsing
 import utils
 from actions import Query, QueryType
-from data import QASCInstance
+from parsing import QASCInstance
 from environment import Environment
 from nlp import EmbeddingSpaceHelper
 from tfidf import TfIdfHelper
@@ -69,7 +69,7 @@ class EnvironmentFactory:
 
         problems_path = Path(problems_path)
 
-        problems = data.read_problems(problems_path, subset=problems_subset)
+        problems = parsing.read_problems(problems_path, subset=problems_subset)
 
         index, inverted_index = utils.build_indices(indices_path)
 

@@ -17,12 +17,12 @@ def load_stop_words() -> FrozenSet[str]:
     """ Return a set of stop words. Cache the result for efficiency """
     stop_words = set(STOP_WORDS)
 
-    # Remove some words that could be useful
-    for w in ['do', 'it', 'yourself',
-              'the', 'who', 'front',
-              'five', 'ten', 'rather',
-              'be', 'next']:
-        stop_words.remove(w)
+    # # Remove some words that could be useful
+    # for w in ['do', 'it', 'yourself',
+    #           'the', 'who', 'front',
+    #           'five', 'ten', 'rather',
+    #           'be', 'next']:
+    #     stop_words.remove(w)
 
     # Add punctuation marks as stop words
     for w in ['&', "'", '(', ')', ',', '-', '.',
@@ -31,6 +31,8 @@ def load_stop_words() -> FrozenSet[str]:
               ";", '[', ']', '<', '>', '=', '?',
               '@', '`']:
         stop_words.add(w)
+
+    stop_words.add('the')
 
     return frozenset(stop_words)
 
@@ -58,32 +60,32 @@ def preprocess(text: Union[str, Sequence[str]], nlp: Language) -> Iterable[Seque
     # Return a generator that will return the tokens as long as they're not a stop word
     return [[w for w in (token.text for token in doc) if w not in stop_words] for doc in docs]
 
-
-def preprocess_entities(gt_path: Union[Path, str],
-                        nlp: Optional[Language] = None) -> Mapping[str, Sequence[str]]:
-    """
-    Reads the entities from the shelf, returns a preprocessed and tokenized dict with the
-    entities' tokens
-    """
-
-    # Let's read the entities from the sample paths
-    _, inverted_index = utils.build_indices(gt_path)
-
-    # The entities come from the keys of the inverted index, discard the paris
-    entities = [cast(str, e) for e in inverted_index.keys() if type(e) == str]
-
-    # If no language pipeline is provided yet
-    if nlp is None:
-        # Load a spaCy english language, don't need the models for now
-        nlp = spacy.blank("en")
-
-    # Preprocess and tokenize those entities
-    tokenized_entities = preprocess(tuple(entities), nlp)
-
-    # Generate a dictionary that maps the inputs to the outputs
-    ret = dict(zip(entities, tokenized_entities))
-
-    return ret
+# TODO Deprecated
+# def preprocess_entities(gt_path: Union[Path, str],
+#                         nlp: Optional[Language] = None) -> Mapping[str, Sequence[str]]:
+#     """
+#     Reads the entities from the shelf, returns a preprocessed and tokenized dict with the
+#     entities' tokens
+#     """
+#
+#     # Let's read the entities from the sample paths
+#     _, inverted_index = utils.build_indices(gt_path)
+#
+#     # The entities come from the keys of the inverted index, discard the paris
+#     entities = [cast(str, e) for e in inverted_index.keys() if type(e) == str]
+#
+#     # If no language pipeline is provided yet
+#     if nlp is None:
+#         # Load a spaCy english language, don't need the models for now
+#         nlp = spacy.blank("en")
+#
+#     # Preprocess and tokenize those entities
+#     tokenized_entities = preprocess(tuple(entities), nlp)
+#
+#     # Generate a dictionary that maps the inputs to the outputs
+#     ret = dict(zip(entities, tokenized_entities))
+#
+#     return ret
 
 
 def average_embedding(tokens: Sequence[str],
