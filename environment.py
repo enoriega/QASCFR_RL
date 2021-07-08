@@ -89,13 +89,13 @@ class Environment:
     _kg_cache = WeakValueDictionary()
 
     def __init__(self, problem: QASCInstance, max_iterations: int, use_embeddings: bool, num_top_entities: int,
-                 seed: int, lucene: QASCIndexSearcher,
+                 seed: int, lucene: QASCIndexSearcher, redis: RedisWrapper,
                  # vector_space: EmbeddingSpaceHelper, topics_helper: TopicsHelper,
                  # tfidf_helper: TfIdfHelper, nlp: Language) -> None:
                  ) -> None:
         self.problem = problem
         self.lucene = lucene
-        self.redis = RedisWrapper()
+        self.redis = redis
         # self._vector_space = vector_space
         # self._topics_helper = topics_helper
         # self._tfidf_helper = tfidf_helper

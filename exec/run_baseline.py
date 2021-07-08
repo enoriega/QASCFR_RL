@@ -1,7 +1,10 @@
+import csv
+
 import pandas as pd
 from tqdm import tqdm
 
 from baselines.cascade import CascadeAgent
+from machine_reading.ie import RedisWrapper
 from parsing import read_problems, QASCInstance
 from environment import Environment
 from machine_reading.ir import QASCIndexSearcher
@@ -20,32 +23,43 @@ def contains_gt(instance: QASCInstance, paths):
 
 
 def crunch_numbers(results):
-
     main_rows = list()
     aux_rows = list()
     for (instance, seed), (env, paths) in results.items():
-        q, a = instance.question, instance.answer
-        successful = contains_gt(instance, paths)
-        num_docs = env.num_docs
-        num_paths = len(paths)
-        iterations = env.iterations
-        main_rows.append(
-            {'q': q, 'a': a, 'seed':seed,
-             'iterations': iterations,
-             'docs': num_docs,
-             'success': successful,
-             'paths': num_paths})
-        for path in paths:
-            path_len = len(path)
-            path_str = ' || '.join(path)
-            aux_rows.append({'q': q, 'a': a, 'seed':seed, 'hops': path_len-1, 'intermediate': path_str[1:][:-1]})
+        main_row, aux = make_csv_row(env, instance, paths, seed)
+        main_rows.append(main_row)
+        aux_rows.extend(aux)
     frame = pd.DataFrame(main_rows)
     paths_frame = pd.DataFrame(aux_rows)
 
-    writer = pd.ExcelWriter('qasc_baseline_results.xlsx', engine='xlsxwriter')
-    frame.to_excel(writer, sheet_name='main')
-    paths_frame.to_excel(writer, sheet_name='paths')
-    writer.close()
+    # writer = pd.ExcelWriter('qasc_baseline_results.xlsx', engine='xlsxwriter')
+    frame.to_csv('baseline_main.csv')
+    paths_frame.to_csv('baseline_paths.csv')
+
+
+def make_csv_row(env, instance, paths, seed):
+    """ Prepares the data from a trail into rows to write to a csv """
+
+    q, a = instance.question, instance.answer
+    successful = contains_gt(instance, paths)
+    num_docs = env.num_docs
+    num_paths = len(paths)
+    iterations = env.iterations
+    main_row = \
+        {'q': q, 'a': a, 'seed': seed,
+         'iterations': iterations,
+         'docs': num_docs,
+         'success': successful,
+         'paths': num_paths}
+
+    aux_rows = list()
+
+    for path in paths:
+        path_len = len(path)
+        path_str = ' || '.join(path)
+        aux_rows.append({'q': q, 'a': a, 'seed': seed, 'hops': path_len - 1, 'intermediate': path_str[1:][:-1]})
+
+    return main_row, aux_rows
 
 
 def main():
@@ -54,19 +68,31 @@ def main():
     seed_state = build_rng(0)
     agent = CascadeAgent(seed_state)
     lucene = QASCIndexSearcher('data/lucene_index')
+    redis = RedisWrapper()
 
-    results = dict()
-    for ix, instance in tqdm(enumerate(instances), desc="Running baseline over dataset"):
-        for seed in seed_state.randint(0, 100000, 15):
-            try:
-                # Instantiate the environment
-                env = Environment(instance, 10, True, 15, seed, lucene)
-                result = agent.run(env)
-                results[(instance, seed)] = (env, result)
-            except Exception as ex:
-                print(f'Problem with instance {ix}')
+    # results = dict()
+    with open('baseline_results.csv', 'w') as a, open('baseline_paths.csv', 'w') as b:
+        results_writer = csv.DictWriter(a, fieldnames=['q', 'a', 'seed', 'iterations', 'docs', 'success', 'paths'])
+        paths_writer = csv.DictWriter(b, fieldnames=['q', 'a', 'seed', 'hops', 'intermediate'])
 
-    crunch_numbers(results)
+        results_writer.writeheader()
+        paths_writer.writeheader()
+
+        for ix, instance in tqdm(enumerate(instances), desc="Running baseline over dataset", total=len(instances)):
+            for seed in seed_state.randint(0, 100000, 15):
+                try:
+                    # Instantiate the environment
+                    env = Environment(instance, 10, True, 15, seed, lucene, redis)
+                    result = agent.run(env)
+                    # results[(instance, seed)] = (env, result)
+                    main_row, aux_rows = make_csv_row(env, instance, result, seed)
+                    results_writer.writerow(main_row)
+                    paths_writer.writerows(aux_rows)
+                except Exception as ex:
+                    print(f'Problem with instance {ix}')
+                    print(ex)
+
+    # crunch_numbers(results)
 
 
 if __name__ == "__main__":
