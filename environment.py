@@ -378,14 +378,14 @@ class Environment:
             return self._obs
         else:
 
-            vs = self._vector_space
-            topics = self._topics_helper
+            # vs = self._vector_space
+            # topics = self._topics_helper
             # normalized_iterations = self.iterations / self.max_iterations
             one_hot_iterations = np.zeros(self.max_iterations + 1)
             one_hot_iterations[self.iterations] = 1
             num_edges = len(self.kg.edges)
             num_vertices = len(self.kg.nodes)
-            graph_topics_dist = topics.compute_topic_dist(frozenset(self.doc_set))
+            # graph_topics_dist = topics.compute_topic_dist(frozenset(self.doc_set))
 
             num_entities = self.num_top_entities
 

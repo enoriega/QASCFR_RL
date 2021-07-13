@@ -44,11 +44,11 @@ class QASCIndexSearcher:
 
 if __name__ == "__main__":
     # get queries and display results
-    searcher = QASCIndexSearcher('data/lucene_index', 10)
+    searcher = QASCIndexSearcher('data/lucene_index')
     running = True
     while running:
         query_string = input('> ')
         if query_string is None:
             running = False
         else:
-            print(list(searcher.search(query_string)))
+            print(list(searcher.search(query_string, 10)))

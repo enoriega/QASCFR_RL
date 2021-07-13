@@ -14,6 +14,8 @@ from spacy.language import Language
 import parsing
 import utils
 from actions import Query, QueryType
+from machine_reading.ie import RedisWrapper
+from machine_reading.ir import QASCIndexSearcher
 from parsing import QASCInstance
 from environment import Environment
 from nlp import EmbeddingSpaceHelper
@@ -30,14 +32,16 @@ class EnvironmentFactory:
     problems: List[QASCInstance]
     use_embeddings: bool
     num_top_entities: int
-    use_generational_ranking: bool
+    # use_generational_ranking: bool
     rng: RandomState
     nlp: Language
-    vector_space: EmbeddingSpaceHelper
-    topics: TopicsHelper
-    tfidf: TfIdfHelper
-    index: Mapping
-    inverted_index: Mapping
+    index: QASCIndexSearcher
+    redis: RedisWrapper
+    # vector_space: EmbeddingSpaceHelper
+    # topics: TopicsHelper
+    # tfidf: TfIdfHelper
+    # index: Mapping
+    # inverted_index: Mapping
 
     def __post_init__(self) -> None:
 
@@ -56,32 +60,32 @@ class EnvironmentFactory:
 
         seed = self.rng.randint(0, int(1e6), size=1)
 
-        env = Environment(sampled, 10, self.use_embeddings, self.num_top_entities, seed, self.index,
-                          self.inverted_index, self.vector_space, self.topics, self.tfidf, self.nlp)
+        env = Environment(sampled, 10, self.use_embeddings, self.num_top_entities, seed, self.index, self.redis)
 
         return env
 
     @classmethod
-    def from_shelf(cls, problems_path: Union[str, Path], problems_subset: Optional[str], use_embeddings: bool,
-                   num_top_entities: int, generational_ranking: bool,
-                   indices_path: Union[str, Path], lda_path: Union[str, Path], corpus_path: Union[str, Path],
+    def from_json(cls, problems_path: Union[str, Path], use_embeddings: bool,
+                   num_top_entities: int,
+                   # indices_path: Union[str, Path], lda_path: Union[str, Path],
+                   # corpus_path: Union[str, Path],
+                   index_searcher:QASCIndexSearcher, redis_client:RedisWrapper,
                    seed: int):
 
         problems_path = Path(problems_path)
 
-        problems = parsing.read_problems(problems_path, subset=problems_subset)
+        problems = parsing.read_problems(problems_path)
 
-        index, inverted_index = utils.build_indices(indices_path)
+        # index, inverted_index = utils.build_indices(indices_path)
 
         nlp = spacy.load("en_core_web_lg")
 
-        vector_space = EmbeddingSpaceHelper(indices_path, nlp)
-        topics_helper = TopicsHelper.from_shelf(lda_path)
-        tfidf_helper = TfIdfHelper.build_tfidf(corpus_path)
+        # vector_space = EmbeddingSpaceHelper(indices_path, nlp)
+        # topics_helper = TopicsHelper.from_shelf(lda_path)
+        # tfidf_helper = TfIdfHelper.build_tfidf(corpus_path)
         rng = utils.build_rng(seed)
 
-        factory = cls(problems, use_embeddings, num_top_entities, generational_ranking, rng, nlp,
-                      vector_space, topics_helper, tfidf_helper, index, inverted_index)
+        factory = cls(problems, use_embeddings, num_top_entities, rng, nlp, index_searcher, redis_client)
 
         return factory
 

@@ -11,6 +11,8 @@ from rlpyt.utils.launching.affinity import affinity_from_code
 from rlpyt.utils.logging.context import logger_context
 
 import utils
+from machine_reading.ie import RedisWrapper
+from machine_reading.ir import QASCIndexSearcher
 from rl.aux import FocusedReadingTrajInfo, MinibatchRlEarlyStop
 from rl.env import RlpytEnv, EnvironmentFactory
 from rl.models import FFFRMedium, FFFRLarge, FFFRExtraLarge
@@ -69,11 +71,16 @@ def build_and_train(slot_affinity_code: str,
                     config_path: Optional[Path]):
     # Read the config file
     config = utils.read_config(config_path)
-
+    train_config = config['rl_train']
     files = config['files']
-    gt_shelf = Path(files['ground_truth_shelf'])
-    topics_shelf = Path(files['topic_modeling_shelf'])
-    corpus_path = Path(files['corpus_file'])
+
+    train_path = Path(files['train_file'])
+    dev_path = Path(files['dev_file'])
+    corpus_path = Path(files['corpus_path'])
+    lucene_index_dir = files['lucene_index_dir']
+
+    lucene = QASCIndexSearcher(lucene_index_dir)
+    redis = RedisWrapper()
 
     if slot_affinity_code.lower() == "none":
         slot_affinity_code = utils.get_affinity(config)
@@ -82,29 +89,17 @@ def build_and_train(slot_affinity_code: str,
 
     rng = utils.build_rng(seed)
 
-    training_factory = EnvironmentFactory.from_shelf(
-        dataset_path, 'training',
-        use_embeddings, num_top_entities, generational_ranking,
-        gt_shelf,
-        topics_shelf,
-        corpus_path, seed=rng.randint(0, 10000)
-    )
+    training_factory = EnvironmentFactory.from_json(train_path, use_embeddings, num_top_entities,lucene, redis, rng.randint(0, 1000))
 
-    testing_factory = EnvironmentFactory.from_shelf(
-        dataset_path, 'development',
-        use_embeddings, num_top_entities, generational_ranking,
-        gt_shelf,
-        topics_shelf,
-        corpus_path, seed=rng.randint(0, 10000)
-    )
+    testing_factory = EnvironmentFactory.from_json(dev_path, use_embeddings, num_top_entities,lucene, redis, rng.randint(0, 1000))
 
     # Share the context data to avoid unnecessary redundancies
     testing_factory.nlp = training_factory.nlp
-    testing_factory.vector_space = training_factory.vector_space
-    testing_factory.topics = training_factory.topics
-    testing_factory.tfidf = training_factory.tfidf
-    testing_factory.index = testing_factory.index
-    testing_factory.inverted_index = testing_factory.inverted_index
+    # testing_factory.vector_space = training_factory.vector_space
+    # testing_factory.topics = training_factory.topics
+    # testing_factory.tfidf = training_factory.tfidf
+    # testing_factory.index = testing_factory.index
+    # testing_factory.inverted_index = testing_factory.inverted_index
 
     training_env_params = {
         'environment_factory': training_factory,
