@@ -3,6 +3,7 @@ import csv
 import pandas as pd
 from tqdm import tqdm
 
+import utils
 from baselines.cascade import CascadeAgent
 from machine_reading.ie import RedisWrapper
 from parsing import read_problems, QASCInstance
@@ -22,7 +23,7 @@ def contains_gt(instance: QASCInstance, paths):
     return ret
 
 
-def crunch_numbers(results):
+def crunch_numbers(results, output_main, output_paths):
     main_rows = list()
     aux_rows = list()
     for (instance, seed), (env, paths) in results.items():
@@ -33,8 +34,8 @@ def crunch_numbers(results):
     paths_frame = pd.DataFrame(aux_rows)
 
     # writer = pd.ExcelWriter('qasc_baseline_results.xlsx', engine='xlsxwriter')
-    frame.to_csv('baseline_main.csv')
-    paths_frame.to_csv('baseline_paths.csv')
+    frame.to_csv(output_main)
+    paths_frame.to_csv(output_paths)
 
 
 def make_csv_row(env, instance, paths, seed):
@@ -63,15 +64,21 @@ def make_csv_row(env, instance, paths, seed):
 
 
 def main():
-    # TODO parameterize paths
-    instances = read_problems("/home/enrique/Downloads/QASC_Dataset/train.jsonl")
+    # Read the config values
+    config = utils.read_config()
+    files_config = config['files']
+    local_config = config['run_baseline']
+    output_main = local_config['output_main']
+    output_paths = local_config['output_paths']
+
+    instances = read_problems(files_config['train_file'])
     seed_state = build_rng(0)
     agent = CascadeAgent(seed_state)
-    lucene = QASCIndexSearcher('data/lucene_index')
+    lucene = QASCIndexSearcher(files_config['lucene_index_dir'])
     redis = RedisWrapper()
 
     # results = dict()
-    with open('baseline_results.csv', 'w') as a, open('baseline_paths.csv', 'w') as b:
+    with open(output_main, 'w') as a, open(output_paths, 'w') as b:
         results_writer = csv.DictWriter(a, fieldnames=['q', 'a', 'seed', 'iterations', 'docs', 'success', 'paths'])
         paths_writer = csv.DictWriter(b, fieldnames=['q', 'a', 'seed', 'hops', 'intermediate'])
 
