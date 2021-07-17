@@ -90,13 +90,14 @@ class Environment:
 
     def __init__(self, problem: QASCInstance, max_iterations: int, use_embeddings: bool, num_top_entities: int,
                  seed: int, lucene: QASCIndexSearcher, redis: RedisWrapper,
-                 # vector_space: EmbeddingSpaceHelper, topics_helper: TopicsHelper,
+                 vector_space: EmbeddingSpaceHelper#, topics_helper: TopicsHelper,
                  # tfidf_helper: TfIdfHelper, nlp: Language) -> None:
                  ) -> None:
         self.problem = problem
-        self.lucene = lucene
+        self.index_dir = lucene
+        self.lucene = None
         self.redis = redis
-        # self._vector_space = vector_space
+        self._vector_space = vector_space
         # self._topics_helper = topics_helper
         # self._tfidf_helper = tfidf_helper
         # self._nlp = nlp
@@ -308,7 +309,8 @@ class Environment:
 
         # Use the inverted index to get the documents returned by the query
         qt = query.type
-        lucene = self.lucene
+
+        lucene = QASCIndexSearcher(self.index_dir)
         if query.endpoints is None or len(query.endpoints) == 0:
             return set(), qt
         else:
@@ -330,13 +332,17 @@ class Environment:
                     # Shouldn't really fall into this case
                     raise Exception("Invalid query")
 
-            result = lucene.search(query_str, max_hits)
+            try:
+                result = lucene.search(query_str, max_hits)
+            except Exception as ex:
+                result = list()
 
             docs = {doc for doc, score in result}
 
             # Get the incremental documents
             new_docs = docs - self.doc_set
 
+            lucene.close()
             return new_docs, qt
 
     def reset(self) -> None:
@@ -390,32 +396,32 @@ class Environment:
             num_entities = self.num_top_entities
 
             # AND query features
-            and_features = np.concatenate([self.query_features(QueryType.And, ix, graph_topics_dist)
-                                           for ix in range(num_entities)])
-
-            # OR query features
-            or_features = np.concatenate([self.query_features(QueryType.Or, ix, graph_topics_dist)
-                                          for ix in range(num_entities)])
-
-            # Singleton query features
-            singleton_features = np.concatenate([self.query_features(QueryType.Singleton, ix, graph_topics_dist)
-                                                 for ix in range(num_entities)])
-
-            # Put the features together
+            # and_features = np.concatenate([self.query_features(QueryType.And, ix, graph_topics_dist)
+            #                                for ix in range(num_entities)])
+            #
+            # # OR query features
+            # or_features = np.concatenate([self.query_features(QueryType.Or, ix, graph_topics_dist)
+            #                               for ix in range(num_entities)])
+            #
+            # # Singleton query features
+            # singleton_features = np.concatenate([self.query_features(QueryType.Singleton, ix, graph_topics_dist)
+            #                                      for ix in range(num_entities)])
+            #
+            # # Put the features together
             components = list()
-            for feats in [and_features, or_features, singleton_features]:
-                components.append(feats)
-
+            # for feats in [and_features, or_features, singleton_features]:
+            #     components.append(feats)
+            #
             if not self._disable_search_state_features:
                 components.append(one_hot_iterations)
                 components.append([num_edges, num_vertices])
 
             obs = np.concatenate(components).astype('float32')
-
-            # If the embeddings where requested, use them
-            if self._use_embeddings:
-                embeddings = vs[[self.problem.question, self.problem.answer]]
-                obs = np.concatenate([embeddings[0], embeddings[1], obs])
+            #
+            # # If the embeddings where requested, use them
+            # if self._use_embeddings:
+            #     embeddings = vs[[self.problem.question, self.problem.answer]]
+            #     obs = np.concatenate([embeddings[0], embeddings[1], obs])
 
             self._obs = obs
 
@@ -586,17 +592,7 @@ class Environment:
             eligible_pairs = useful_pairs
 
             if len(eligible_pairs) > 0:
-
-                similarities = vs.similarity(*zip(*eligible_pairs))  # .reshape((1,))
-
-                similarities += 1  # This is to shift all the cosine similarities up by one to account for the negatives
-
-                probs = similarities / similarities.sum()
-
-                top_ix = np.argsort(probs)[::-1]
-                # ix = self._rng.choice(len(eligible_pairs), p=probs)
-
-                self._and = [CandidatePair(tuple(eligible_pairs[ix]), similarities[ix]) for ix in top_ix]
+                self._and = [CandidatePair(tuple(pair), 1) for pair in eligible_pairs]
 
             else:
                 self._and = [CandidatePair(tuple(), 0.)]
@@ -642,17 +638,17 @@ class Environment:
                 #
                 # self._or = [tuple(eligible_pairs[ix]), scores[ix]]
 
-                similarities = vs.similarity(*zip(*eligible_pairs))  # .reshape((1,))
-
-                similarities += 1  # This is to shift all the cosine similarities up by one to account for the negatives
-
-                # probs = similarities / similarities.sum()
-
-                top_ix = np.argsort(similarities)[::-1]
-
+                # similarities = vs.similarity(*zip(*eligible_pairs))  # .reshape((1,))
+                #
+                # similarities += 1  # This is to shift all the cosine similarities up by one to account for the negatives
+                #
+                # # # probs = similarities / similarities.sum()
+                #
+                # top_ix = np.argsort(similarities)[::-1]
+                #
                 # ix = self._rng.choice(len(eligible_pairs), p=probs)
 
-                self._or = [CandidatePair(tuple(eligible_pairs[ix]), similarities[ix]) for ix in top_ix]
+                self._or = [CandidatePair(tuple(pair), 1) for pair in eligible_pairs]
             else:
                 self._or = [CandidatePair(tuple(), 0.)]
 
@@ -665,7 +661,7 @@ class Environment:
         if self._singleton is not None:
             return self._singleton
         else:
-            tfidf = self._tfidf_helper
+            # tfidf = self._tfidf_helper
 
             eligible_entities = [e for e in self.kg.nodes if e not in self._singleton_log]
 
@@ -680,16 +676,16 @@ class Environment:
 
             if len(eligible_entities) > 0:
 
-                tokenized_entities = list(preprocess(tuple(eligible_entities), self._nlp))
-                scores = np.asarray([safe_mean(tfidf[te]) for te in tokenized_entities])
-                scores += 1e-6
-                probs = scores / scores.sum()
-
-                top_ix = np.argsort(probs)[::-1]
+                # tokenized_entities = list(preprocess(tuple(eligible_entities), self._nlp))
+                # scores = np.asarray([safe_mean(tfidf[te]) for te in tokenized_entities])
+                # scores += 1e-6
+                # probs = scores / scores.sum()
+                #
+                # top_ix = np.argsort(probs)[::-1]
 
                 # ix = self._rng.choice(len(eligible_entities), p=probs)
 
-                self._singleton = [CandidateEntity(eligible_entities[ix], scores[ix]) for ix in top_ix]
+                self._singleton = [CandidateEntity(entity, 1) for entity in eligible_entities]
             else:
                 self._singleton = [CandidateEntity(None, 0.)]
 

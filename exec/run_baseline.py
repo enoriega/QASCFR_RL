@@ -1,11 +1,13 @@
 import csv
 
 import pandas as pd
+import spacy
 from tqdm import tqdm
 
 import utils
 from baselines.cascade import CascadeAgent
 from machine_reading.ie import RedisWrapper
+from nlp import EmbeddingSpaceHelper
 from parsing import read_problems, QASCInstance
 from environment import Environment
 from machine_reading.ir import QASCIndexSearcher
@@ -76,6 +78,7 @@ def main():
     agent = CascadeAgent(seed_state)
     lucene = QASCIndexSearcher(files_config['lucene_index_dir'])
     redis = RedisWrapper()
+    vector_space = EmbeddingSpaceHelper(spacy.blank("en"))
 
     # results = dict()
     with open(output_main, 'w') as a, open(output_paths, 'w') as b:
@@ -89,7 +92,7 @@ def main():
             for seed in seed_state.randint(0, 100000, 15):
                 try:
                     # Instantiate the environment
-                    env = Environment(instance, 10, True, 15, seed, lucene, redis)
+                    env = Environment(instance, 10, True, 15, seed, lucene, redis, None)
                     result = agent.run(env)
                     # results[(instance, seed)] = (env, result)
                     main_row, aux_rows = make_csv_row(env, instance, result, seed)

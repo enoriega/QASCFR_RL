@@ -104,37 +104,36 @@ def average_embedding(tokens: Sequence[str],
 class EmbeddingSpaceHelper:
     """ This class handles mostly cosine similarity operations """
 
-    def __init__(self, gt_path: Union[Path, str], nlp: Language) -> None:
+    def __init__(self, nlp: Language) -> None:
         """
         Initialize the embeddings matrix from the entities in the GT sample
-        :param gt_path: Path to the GT sample
         :param nlp: spaCy pipeline to fetch entity vectors
         """
         self.nlp = nlp
 
-        # Preprocess the entities
-        tokenized_entities = preprocess_entities(gt_path, nlp)
-        self._tokenized_entities = tokenized_entities
-
-        # Build the embeddings matrix from the pre-processed entities
-        embedding_matrix = np.vstack(
-            [average_embedding(t, nlp) for t in tokenized_entities.values()])
-
-        # Pre-normalize the embeddings for efficient cosine similarity queries
-        norms = np.linalg.norm(embedding_matrix, axis=1)
-        # Add a small residual to the entries where the norm was zero to avoid a division by zero
-        norms = np.where(norms != 0, norms, 1e-10)
-        # Normalize the matrix
-        normalized_embedding_matrix = embedding_matrix / norms.reshape(-1, 1)
-
-        self._matrix = embedding_matrix
-        self._normalized_matrix = normalized_embedding_matrix
-
-        self._similarities = normalized_embedding_matrix @ np.transpose(normalized_embedding_matrix)
-
-        # Build index and inverted index of the entities to efficiently address the embedding matrices
-        self._entity_ix = {e: ix for ix, e in enumerate(tokenized_entities.keys())}
-        self._inv_entity_ix = {ix: e for ix, e in enumerate(tokenized_entities.keys())}
+        # # Preprocess the entities
+        # tokenized_entities = preprocess_entities(gt_path, nlp)
+        # self._tokenized_entities = tokenized_entities
+        #
+        # # Build the embeddings matrix from the pre-processed entities
+        # embedding_matrix = np.vstack(
+        #     [average_embedding(t, nlp) for t in tokenized_entities.values()])
+        #
+        # # Pre-normalize the embeddings for efficient cosine similarity queries
+        # norms = np.linalg.norm(embedding_matrix, axis=1)
+        # # Add a small residual to the entries where the norm was zero to avoid a division by zero
+        # norms = np.where(norms != 0, norms, 1e-10)
+        # # Normalize the matrix
+        # normalized_embedding_matrix = embedding_matrix / norms.reshape(-1, 1)
+        #
+        # self._matrix = embedding_matrix
+        # self._normalized_matrix = normalized_embedding_matrix
+        #
+        # self._similarities = normalized_embedding_matrix @ np.transpose(normalized_embedding_matrix)
+        #
+        # # Build index and inverted index of the entities to efficiently address the embedding matrices
+        # self._entity_ix = {e: ix for ix, e in enumerate(tokenized_entities.keys())}
+        # self._inv_entity_ix = {ix: e for ix, e in enumerate(tokenized_entities.keys())}
 
     def get(self, items: Union[str, Sequence[str]], normalized: bool = False) -> np.ndarray:
         """ Fetches the entity average embedding may return the normalized version if requested by the caller"""
@@ -194,7 +193,37 @@ class EmbeddingSpaceHelper:
     #         # Return all the similarities vector
     #         return similarities
 
-    def similarity(self, a: Union[str, Sequence[str]], b: Optional[Union[str, Sequence[str]]] = None) -> np.ndarray:
+    # TODO Deprecated
+    # def similarity(self, a: Union[str, Sequence[str]], b: Optional[Union[str, Sequence[str]]] = None) -> np.ndarray:
+    #     """
+    #     Computes the cosine similarity of an entity with respect to all other entities or a subset of entities
+    #     :param a: Key or keys to our query to compute the cosine similarity
+    #     :param b: Another entity of subset of entities to compute the cosine similarity with a.
+    #               If None, then result a vector with all the similarities
+    #     :return: Array with the numpy similarity wrt
+    #     """
+    #
+    #     if type(a) == str:
+    #         a = [a]
+    #
+    #     # Fetch the normalized matrix
+    #     similarities = self._similarities
+    #
+    #     # If a subset was requested, slice the similarities vector to select the appropriate indices
+    #     if b is not None:
+    #         # If the second entity is just one, make a list with as single elements
+    #         if type(b) == str:
+    #             b = [b]
+    #         # Fetch the indices in the matrix of the requested entities
+    #         indices_a = [self._entity_ix[e] for e in a]
+    #         indices_b = [self._entity_ix[e] for e in b]
+    #         # Return the appropriate subset of the similarities vector
+    #         return similarities[indices_a, indices_b]  # .reshape(1, )
+    #     else:
+    #         # Return all the similarities vector
+    #         return similarities
+
+    def similarity(self, a: Union[str, Sequence[str]], b: Union[str, Sequence[str]]) -> np.ndarray:
         """
         Computes the cosine similarity of an entity with respect to all other entities or a subset of entities
         :param a: Key or keys to our query to compute the cosine similarity
@@ -205,9 +234,6 @@ class EmbeddingSpaceHelper:
 
         if type(a) == str:
             a = [a]
-
-        # Fetch the normalized matrix
-        similarities = self._similarities
 
         # If a subset was requested, slice the similarities vector to select the appropriate indices
         if b is not None:

@@ -37,7 +37,7 @@ class EnvironmentFactory:
     nlp: Language
     index: QASCIndexSearcher
     redis: RedisWrapper
-    # vector_space: EmbeddingSpaceHelper
+    vector_space: EmbeddingSpaceHelper
     # topics: TopicsHelper
     # tfidf: TfIdfHelper
     # index: Mapping
@@ -60,7 +60,7 @@ class EnvironmentFactory:
 
         seed = self.rng.randint(0, int(1e6), size=1)
 
-        env = Environment(sampled, 10, self.use_embeddings, self.num_top_entities, seed, self.index, self.redis)
+        env = Environment(sampled, 10, self.use_embeddings, self.num_top_entities, seed, self.index, self.redis, self.vector_space)
 
         return env
 
@@ -80,12 +80,12 @@ class EnvironmentFactory:
 
         nlp = spacy.load("en_core_web_lg")
 
-        # vector_space = EmbeddingSpaceHelper(indices_path, nlp)
+        vector_space = EmbeddingSpaceHelper(nlp)
         # topics_helper = TopicsHelper.from_shelf(lda_path)
         # tfidf_helper = TfIdfHelper.build_tfidf(corpus_path)
         rng = utils.build_rng(seed)
 
-        factory = cls(problems, use_embeddings, num_top_entities, rng, nlp, index_searcher, redis_client)
+        factory = cls(problems, use_embeddings, num_top_entities, rng, nlp, index_searcher, redis_client, vector_space)
 
         return factory
 

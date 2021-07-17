@@ -4,15 +4,19 @@ from pathlib import Path
 from typing import Optional
 
 import plac
+import spacy
 from rlpyt.agents.pg.categorical import CategoricalPgAgent
 from rlpyt.algos.pg.a2c import A2C
+from rlpyt.runners.minibatch_rl import MinibatchRl
 from rlpyt.samplers.parallel.cpu.sampler import CpuSampler
+from rlpyt.samplers.serial.sampler import SerialSampler
 from rlpyt.utils.launching.affinity import affinity_from_code
 from rlpyt.utils.logging.context import logger_context
 
 import utils
 from machine_reading.ie import RedisWrapper
 from machine_reading.ir import QASCIndexSearcher
+from nlp import EmbeddingSpaceHelper
 from rl.aux import FocusedReadingTrajInfo, MinibatchRlEarlyStop
 from rl.env import RlpytEnv, EnvironmentFactory
 from rl.models import FFFRMedium, FFFRLarge, FFFRExtraLarge
@@ -76,10 +80,9 @@ def build_and_train(slot_affinity_code: str,
 
     train_path = Path(files['train_file'])
     dev_path = Path(files['dev_file'])
-    corpus_path = Path(files['corpus_path'])
     lucene_index_dir = files['lucene_index_dir']
 
-    lucene = QASCIndexSearcher(lucene_index_dir)
+    # lucene = QASCIndexSearcher(lucene_index_dir)
     redis = RedisWrapper()
 
     if slot_affinity_code.lower() == "none":
@@ -89,9 +92,9 @@ def build_and_train(slot_affinity_code: str,
 
     rng = utils.build_rng(seed)
 
-    training_factory = EnvironmentFactory.from_json(train_path, use_embeddings, num_top_entities,lucene, redis, rng.randint(0, 1000))
+    training_factory = EnvironmentFactory.from_json(train_path, use_embeddings, num_top_entities,lucene_index_dir, redis, rng.randint(0, 1000))
 
-    testing_factory = EnvironmentFactory.from_json(dev_path, use_embeddings, num_top_entities,lucene, redis, rng.randint(0, 1000))
+    testing_factory = EnvironmentFactory.from_json(dev_path, use_embeddings, num_top_entities,lucene_index_dir, redis, rng.randint(0, 1000))
 
     # Share the context data to avoid unnecessary redundancies
     testing_factory.nlp = training_factory.nlp
@@ -130,7 +133,7 @@ def build_and_train(slot_affinity_code: str,
         batch_T=t_steps,
         batch_B=batch_size,
         max_decorrelation_steps=decorrelation_steps,
-        eval_n_envs=len(testing_factory.problems),
+        eval_n_envs=5//len(testing_factory.problems),
         eval_max_steps=len(testing_factory.problems)*10,
         eval_max_trajectories=len(testing_factory.problems),
     )
@@ -148,8 +151,8 @@ def build_and_train(slot_affinity_code: str,
 
     algo = A2C()  # Run with defaults.
     agent = CategoricalPgAgent(ModelCls=network_cls, model_kwargs=model_params)
-    runner = MinibatchRlEarlyStop(
-        warm_up_itr=1000,
+    runner = MinibatchRl(
+        # warm_up_itr=1000,
         algo=algo,
         agent=agent,
         sampler=sampler,

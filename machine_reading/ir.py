@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import Tuple, List
 
 import lucene
@@ -30,6 +31,7 @@ class QASCIndexSearcher:
         self._query_parser = QueryParser('phrase', analyzer)  # This is the name of the field we search for
 
     # function to retrieve results based on a query string
+    @lru_cache(maxsize=2048)
     def search(self, query_string: str, max_hits: int) -> List[Tuple[str, float]]:
         query_string = clean_query(query_string)
         query = self._query_parser.parse(query_string)

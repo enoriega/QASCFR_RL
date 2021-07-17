@@ -67,9 +67,9 @@ class MinibatchRlEarlyStop(MinibatchRlEval):
         specified log interval.
         """
         n_itr = self.startup()
-        with logger.prefix(f"itr #0 "):
-            eval_traj_infos, eval_time = self.evaluate_agent(0)
-            self.log_diagnostics(0, eval_traj_infos, eval_traj_infos, eval_time)
+        # with logger.prefix(f"itr #0 "):
+        #     eval_traj_infos, eval_time = self.evaluate_agent(0)
+        #     self.log_diagnostics(0, eval_traj_infos, eval_traj_infos, eval_time)
         for itr in range(n_itr):
             logger.set_iteration(itr)
             with logger.prefix(f"itr #{itr} "):
