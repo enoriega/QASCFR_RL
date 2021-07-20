@@ -1,7 +1,7 @@
 from collections import namedtuple
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple, NamedTuple, List, Union, Mapping, Optional
+from typing import Tuple, NamedTuple, List, Union, Optional
 
 import numpy as np
 import spacy
@@ -15,12 +15,10 @@ import parsing
 import utils
 from actions import Query, QueryType
 from machine_reading.ie import RedisWrapper
-from machine_reading.ir import QASCIndexSearcher
+from machine_reading.ir.lucene import QASCIndexSearcher
 from parsing import QASCInstance
 from environment import Environment
 from nlp import EmbeddingSpaceHelper
-from tfidf import TfIdfHelper
-from topic_modeling import TopicsHelper
 
 Observation = np.ndarray
 

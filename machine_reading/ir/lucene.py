@@ -46,7 +46,7 @@ class QASCIndexSearcher:
 
 if __name__ == "__main__":
     # get queries and display results
-    searcher = QASCIndexSearcher('data/lucene_index')
+    searcher = QASCIndexSearcher('../data/lucene_index')
     running = True
     while running:
         query_string = input('> ')
