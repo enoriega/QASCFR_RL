@@ -16,7 +16,7 @@ from actions import Query, QueryType
 from parsing import QASCInstance, Pair
 
 from machine_reading.ie import RedisWrapper
-from machine_reading.ir import QASCIndexSearcher
+from machine_reading.ir.es import QASCIndexSearcher
 from nlp import EmbeddingSpaceHelper, preprocess, load_stop_words
 from tfidf import TfIdfHelper
 from topic_modeling import TopicsHelper
@@ -82,20 +82,19 @@ def get_terms(phrase:str) -> str:
     return " ".join(kept)
 
 
-class Environment:
+class QASCInstance:
     """ Represents the environment on which a problem is operated """
 
     # Store the assembled knowledge graphs here to avoid hitting the indices repeatedly
     _kg_cache = WeakValueDictionary()
 
     def __init__(self, problem: QASCInstance, max_iterations: int, use_embeddings: bool, num_top_entities: int,
-                 seed: int, lucene: QASCIndexSearcher, redis: RedisWrapper,
-                 vector_space: EmbeddingSpaceHelper#, topics_helper: TopicsHelper,
+                 seed: int, ir_index: QASCIndexSearcher, redis: RedisWrapper,
+                 vector_space: EmbeddingSpaceHelper  #, topics_helper: TopicsHelper,
                  # tfidf_helper: TfIdfHelper, nlp: Language) -> None:
                  ) -> None:
         self.problem = problem
-        self.index_dir = lucene
-        self.lucene = None
+        self.ir_index = ir_index
         self.redis = redis
         self._vector_space = vector_space
         # self._topics_helper = topics_helper
@@ -260,7 +259,7 @@ class Environment:
         # The document set
         docs = self.doc_set
 
-        cache = Environment._kg_cache
+        cache = QASCInstance._kg_cache
         cache_key = (start, end, frozenset(docs))
         if cache_key in cache:
             return cache[cache_key]
@@ -310,7 +309,7 @@ class Environment:
         # Use the inverted index to get the documents returned by the query
         qt = query.type
 
-        lucene = QASCIndexSearcher(self.index_dir)
+        lucene = QASCIndexSearcher()
         if query.endpoints is None or len(query.endpoints) == 0:
             return set(), qt
         else:
@@ -342,7 +341,6 @@ class Environment:
             # Get the incremental documents
             new_docs = docs - self.doc_set
 
-            lucene.close()
             return new_docs, qt
 
     def reset(self) -> None:

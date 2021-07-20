@@ -8,6 +8,8 @@ from rlpyt.agents.pg.categorical import CategoricalPgAgent
 from rlpyt.algos.pg.a2c import A2C
 from rlpyt.runners.minibatch_rl import MinibatchRl
 from rlpyt.samplers.parallel.cpu.sampler import CpuSampler
+from rlpyt.samplers.parallel.gpu.sampler import GpuSampler
+from rlpyt.samplers.serial.sampler import SerialSampler
 from rlpyt.utils.launching.affinity import affinity_from_code
 from rlpyt.utils.logging.context import logger_context
 
@@ -15,7 +17,7 @@ import utils
 from machine_reading.ie import RedisWrapper
 from machine_reading.ir.es import QASCIndexSearcher
 from rl.aux import FocusedReadingTrajInfo
-from rl.env import RlpytEnv, EnvironmentFactory
+from rl.env import RlpytEnv, QASCInstanceFactory
 from rl.models import FFFRMedium, FFFRLarge, FFFRExtraLarge
 
 
@@ -89,9 +91,11 @@ def build_and_train(slot_affinity_code: str,
 
     rng = utils.build_rng(seed)
 
-    training_factory = EnvironmentFactory.from_json(train_path, use_embeddings, num_top_entities,lucene_index_dir, redis, rng.randint(0, 1000))
+    training_factory = QASCInstanceFactory.from_json(train_path, use_embeddings, num_top_entities,
+                                                     es, redis, rng.randint(0, 1000))
 
-    testing_factory = EnvironmentFactory.from_json(dev_path, use_embeddings, num_top_entities,lucene_index_dir, redis, rng.randint(0, 1000))
+    testing_factory = QASCInstanceFactory.from_json(dev_path, use_embeddings, num_top_entities,
+                                                    es, redis, rng.randint(0, 1000))
 
     # Share the context data to avoid unnecessary redundancies
     testing_factory.nlp = training_factory.nlp
@@ -122,7 +126,7 @@ def build_and_train(slot_affinity_code: str,
 
     traj_cls = partial(FocusedReadingTrajInfo, num_top_entities)
 
-    sampler = CpuSampler(
+    sampler = SerialSampler(
         EnvCls=RlpytEnv,
         TrajInfoCls=traj_cls,
         env_kwargs=training_env_params,
@@ -130,7 +134,7 @@ def build_and_train(slot_affinity_code: str,
         batch_T=t_steps,
         batch_B=batch_size,
         max_decorrelation_steps=decorrelation_steps,
-        eval_n_envs=5//len(testing_factory.problems),
+        eval_n_envs=8,#5//len(testing_factory.problems),
         eval_max_steps=len(testing_factory.problems)*10,
         eval_max_trajectories=len(testing_factory.problems),
     )

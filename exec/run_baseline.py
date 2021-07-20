@@ -9,7 +9,7 @@ from baselines.cascade import CascadeAgent
 from machine_reading.ie import RedisWrapper
 from nlp import EmbeddingSpaceHelper
 from parsing import read_problems, QASCInstance
-from environment import Environment
+from environment import QASCInstance
 from machine_reading.ir.lucene import QASCIndexSearcher
 from utils import build_rng
 
@@ -92,7 +92,7 @@ def main():
             for seed in seed_state.randint(0, 100000, 15):
                 try:
                     # Instantiate the environment
-                    env = Environment(instance, 10, True, 15, seed, lucene, redis, None)
+                    env = QASCInstance(instance, 10, True, 15, seed, lucene, redis, None)
                     result = agent.run(env)
                     # results[(instance, seed)] = (env, result)
                     main_row, aux_rows = make_csv_row(env, instance, result, seed)
