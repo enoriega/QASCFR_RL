@@ -10,7 +10,7 @@ from machine_reading.ie import RedisWrapper
 from nlp import EmbeddingSpaceHelper
 from parsing import read_problems, QASCInstance
 from environment import Environment
-from machine_reading.ir import QASCIndexSearcher
+from machine_reading.ir.lucene import QASCIndexSearcher
 from utils import build_rng
 
 

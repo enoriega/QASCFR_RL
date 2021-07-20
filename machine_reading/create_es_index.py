@@ -18,8 +18,8 @@ if __name__ == "__main__":
         phrases = phrases_generator('/home/enrique/Downloads/QASC_Corpus/QASC_Corpus.txt')
         progress = tqdm(unit="docs", desc="Indexing QASC corpus")
         successes = 0
-        for ok, action in streaming_bulk(es, index="qascfr-0001", actions=phrases):
-            progress.update(1)
-            successes += ok
+        # for ok, action in streaming_bulk(es, index="qascfr-0001", actions=phrases):
+        #     progress.update(1)
+        #     successes += ok
 
         print(f"Indexed {successes} documents")

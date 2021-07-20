@@ -4,20 +4,17 @@ from pathlib import Path
 from typing import Optional
 
 import plac
-import spacy
 from rlpyt.agents.pg.categorical import CategoricalPgAgent
 from rlpyt.algos.pg.a2c import A2C
 from rlpyt.runners.minibatch_rl import MinibatchRl
 from rlpyt.samplers.parallel.cpu.sampler import CpuSampler
-from rlpyt.samplers.serial.sampler import SerialSampler
 from rlpyt.utils.launching.affinity import affinity_from_code
 from rlpyt.utils.logging.context import logger_context
 
 import utils
 from machine_reading.ie import RedisWrapper
-from machine_reading.ir import QASCIndexSearcher
-from nlp import EmbeddingSpaceHelper
-from rl.aux import FocusedReadingTrajInfo, MinibatchRlEarlyStop
+from machine_reading.ir.es import QASCIndexSearcher
+from rl.aux import FocusedReadingTrajInfo
 from rl.env import RlpytEnv, EnvironmentFactory
 from rl.models import FFFRMedium, FFFRLarge, FFFRExtraLarge
 
@@ -82,7 +79,7 @@ def build_and_train(slot_affinity_code: str,
     dev_path = Path(files['dev_file'])
     lucene_index_dir = files['lucene_index_dir']
 
-    # lucene = QASCIndexSearcher(lucene_index_dir)
+    es = QASCIndexSearcher()
     redis = RedisWrapper()
 
     if slot_affinity_code.lower() == "none":

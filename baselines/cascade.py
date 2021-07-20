@@ -1,12 +1,10 @@
 import abc
-from typing import Any, Optional, List
+from typing import Optional, List
 
 from numpy.random import RandomState
 
 from actions import Query, QueryType
-from parsing import QASCInstance
 from environment import Environment
-from machine_reading.ir import QASCIndexSearcher
 
 
 class Agent(abc.ABC):
