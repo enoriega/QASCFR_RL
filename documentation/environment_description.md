@@ -31,3 +31,7 @@ Explanation set is empty
     - Stop-word filter
 - Query similarity function: See AIR for details
 - Query Coverage function (Trivial)
+
+## Atachments
+- [QASC](https://arxiv.org/pdf/1910.11473.pdf)
+- [AIR](https://arxiv.org/pdf/2005.01218.pdf)

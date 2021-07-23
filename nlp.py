@@ -1,15 +1,23 @@
 """ This file has NLP utilities, such as tokenization, embedding lookups, etc"""
 from functools import lru_cache
 from pathlib import Path
-from typing import Sequence, Union, Mapping, Iterable, Optional, cast, FrozenSet
+from typing import Sequence, Union, Mapping, Iterable, Optional, cast, FrozenSet, List, Type
 
 import numpy as np
 import spacy
+from gensim.models import KeyedVectors
+from nltk import PorterStemmer, SnowballStemmer
+from numpy.typing import ArrayLike
 from spacy.lang.en.stop_words import STOP_WORDS
 from spacy.language import Language
 from spacy.tokens import Doc
 
 import utils
+
+
+@lru_cache(maxsize=5)
+def load_glove(path: str) -> KeyedVectors:
+    return KeyedVectors.load(path)
 
 
 @lru_cache(maxsize=1)
@@ -37,8 +45,15 @@ def load_stop_words() -> FrozenSet[str]:
     return frozenset(stop_words)
 
 
+@lru_cache(maxsize=1)
+def stemmed_stop_words() -> FrozenSet[str]:
+    """ Return the same stop words as above, stemmed with Snowball """
+    stemmer = SnowballStemmer()
+    return frozenset(stemmer.stem(w) for w in load_stop_words())
+
+
 @lru_cache(maxsize=10000)
-def preprocess(text: Union[str, Sequence[str]], nlp: Language) -> Iterable[Sequence[str]]:
+def preprocess(text: Union[str, Iterable[str]], nlp: Language) -> Iterable[Sequence[str]]:
     """ Splits the input string into a sequence of tokens. Everything is done lazily """
 
     # Make sure we do the "batched" version even if its a single input text
@@ -49,43 +64,16 @@ def preprocess(text: Union[str, Sequence[str]], nlp: Language) -> Iterable[Seque
     text = (t.lower().strip().replace("_", " ") for t in text)
 
     # Pipe the text for efficient tokenization. Disable the tagger and parser for now
-    docs = nlp.pipe(text, disable=['tagger', 'parser'])
+    docs = nlp.pipe(text, disable=['parser'])
 
     # Fetch the stop words
     stop_words = load_stop_words()
 
-    # Do some stemming
-    # stemmer = PorterStemmer()  # TODO: Do something better about stemming/lemmatization
+    # Do some stemming with this
+    stemmer = SnowballStemmer(language='english')
 
     # Return a generator that will return the tokens as long as they're not a stop word
-    return [[w for w in (token.text for token in doc) if w not in stop_words] for doc in docs]
-
-# TODO Deprecated
-# def preprocess_entities(gt_path: Union[Path, str],
-#                         nlp: Optional[Language] = None) -> Mapping[str, Sequence[str]]:
-#     """
-#     Reads the entities from the shelf, returns a preprocessed and tokenized dict with the
-#     entities' tokens
-#     """
-#
-#     # Let's read the entities from the sample paths
-#     _, inverted_index = utils.build_indices(gt_path)
-#
-#     # The entities come from the keys of the inverted index, discard the paris
-#     entities = [cast(str, e) for e in inverted_index.keys() if type(e) == str]
-#
-#     # If no language pipeline is provided yet
-#     if nlp is None:
-#         # Load a spaCy english language, don't need the models for now
-#         nlp = spacy.blank("en")
-#
-#     # Preprocess and tokenize those entities
-#     tokenized_entities = preprocess(tuple(entities), nlp)
-#
-#     # Generate a dictionary that maps the inputs to the outputs
-#     ret = dict(zip(entities, tokenized_entities))
-#
-#     return ret
+    return [[w for w in (stemmer.stem(token.text) for token in doc) if w not in stop_words] for doc in docs]
 
 
 def average_embedding(tokens: Sequence[str],
@@ -99,6 +87,40 @@ def average_embedding(tokens: Sequence[str],
     ret = doc.vector
 
     return ret
+
+
+def air_align(anchor_term: str, phrase_terms: Union[ArrayLike, List[str]], model: KeyedVectors) -> float:
+    """
+    Max-pooled cosine similarity from the cartesian product of the arguments.
+    See AIR, Sec 3.1
+    """
+
+    anchor = model[anchor_term]
+
+    # In case we don't have the matrix of embeddings yet
+    if type(phrase_terms) == list:
+        phrase_terms = model[phrase_terms]
+
+    similarities = cast(ArrayLike, KeyedVectors.cosine_similarities(anchor, phrase_terms))
+
+    pooled = similarities.max()
+
+    return pooled
+
+
+def idf(term: str) -> float:
+    return 1.
+
+
+def air_s(query_terms: List[str], phrase_terms: List[str], model: KeyedVectors) -> float:
+    phrase_matrix = model[phrase_terms]
+    return sum(idf(q) * air_align(q, phrase_matrix, model) for q in query_terms)
+
+
+class Embeddings:
+
+    def __init__(self, path: str):
+        pass
 
 
 class EmbeddingSpaceHelper:
