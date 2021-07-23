@@ -1,7 +1,8 @@
 """ This file has NLP utilities, such as tokenization, embedding lookups, etc"""
+import pickle
 from functools import lru_cache
 from pathlib import Path
-from typing import Sequence, Union, Mapping, Iterable, Optional, cast, FrozenSet, List, Type
+from typing import Sequence, Union, Mapping, Iterable, Optional, cast, FrozenSet, List, Type, Set
 
 import numpy as np
 import spacy
@@ -13,11 +14,12 @@ from spacy.language import Language
 from spacy.tokens import Doc
 
 import utils
+from machine_reading.ir.document_frequencies import FrequencyCounter
 
 
 @lru_cache(maxsize=5)
 def load_glove(path: str) -> KeyedVectors:
-    return KeyedVectors.load(path)
+    return cast(KeyedVectors, KeyedVectors.load(path))
 
 
 @lru_cache(maxsize=1)
@@ -48,7 +50,7 @@ def load_stop_words() -> FrozenSet[str]:
 @lru_cache(maxsize=1)
 def stemmed_stop_words() -> FrozenSet[str]:
     """ Return the same stop words as above, stemmed with Snowball """
-    stemmer = SnowballStemmer()
+    stemmer = SnowballStemmer(language="english")
     return frozenset(stemmer.stem(w) for w in load_stop_words())
 
 
@@ -109,7 +111,19 @@ def air_align(anchor_term: str, phrase_terms: Union[ArrayLike, List[str]], model
 
 
 def idf(term: str) -> float:
-    return 1.
+    frequencies = load_term_frequencies()
+    return frequencies.idf.get(term, 0.)
+
+
+@lru_cache(maxsize=1)
+def load_term_frequencies() -> FrequencyCounter:
+    """ Loads lazily the pre-computed FrequencyCounter """
+    config = utils.read_config()
+    path = Path(config['files']['frequencies_path'])
+    with path.open('rb') as f:
+        freqs = pickle.load(f)
+
+    return freqs
 
 
 def air_s(query_terms: List[str], phrase_terms: List[str], model: KeyedVectors) -> float:
@@ -117,169 +131,21 @@ def air_s(query_terms: List[str], phrase_terms: List[str], model: KeyedVectors) 
     return sum(idf(q) * air_align(q, phrase_matrix, model) for q in query_terms)
 
 
-class Embeddings:
+def air_remaining(query_terms: Sequence[str], explanations_terms: Sequence[Sequence[str]]) -> Set[str]:
+    """ Returns the set of terms not yet covered by an explanation """
 
-    def __init__(self, path: str):
-        pass
+    query = set(query_terms)
+    explanation = set()
+    for exp in explanations_terms:
+        explanation |= set(exp)
+
+    return query - explanation
 
 
-class EmbeddingSpaceHelper:
-    """ This class handles mostly cosine similarity operations """
+def air_coverage(query_terms: Sequence[str], explanations_terms: Sequence[Sequence[str]]) -> float:
+    """ Returns the coverage of terms in the query by the explanations' terms """
+    query = set(query_terms)
 
-    def __init__(self, nlp: Language) -> None:
-        """
-        Initialize the embeddings matrix from the entities in the GT sample
-        :param nlp: spaCy pipeline to fetch entity vectors
-        """
-        self.nlp = nlp
+    intersections = sum(len(query & set(exp)) for exp in explanations_terms)
+    return intersections / len(query)
 
-        # # Preprocess the entities
-        # tokenized_entities = preprocess_entities(gt_path, nlp)
-        # self._tokenized_entities = tokenized_entities
-        #
-        # # Build the embeddings matrix from the pre-processed entities
-        # embedding_matrix = np.vstack(
-        #     [average_embedding(t, nlp) for t in tokenized_entities.values()])
-        #
-        # # Pre-normalize the embeddings for efficient cosine similarity queries
-        # norms = np.linalg.norm(embedding_matrix, axis=1)
-        # # Add a small residual to the entries where the norm was zero to avoid a division by zero
-        # norms = np.where(norms != 0, norms, 1e-10)
-        # # Normalize the matrix
-        # normalized_embedding_matrix = embedding_matrix / norms.reshape(-1, 1)
-        #
-        # self._matrix = embedding_matrix
-        # self._normalized_matrix = normalized_embedding_matrix
-        #
-        # self._similarities = normalized_embedding_matrix @ np.transpose(normalized_embedding_matrix)
-        #
-        # # Build index and inverted index of the entities to efficiently address the embedding matrices
-        # self._entity_ix = {e: ix for ix, e in enumerate(tokenized_entities.keys())}
-        # self._inv_entity_ix = {ix: e for ix, e in enumerate(tokenized_entities.keys())}
-
-    def get(self, items: Union[str, Sequence[str]], normalized: bool = False) -> np.ndarray:
-        """ Fetches the entity average embedding may return the normalized version if requested by the caller"""
-
-        if type(items) == str:
-            items = [items]
-
-        for item in items:
-            if item not in self._tokenized_entities:
-                # If the entity is not in the index fail
-                raise IndexError(f"{item} not among the embeddings")
-        else:
-            # Select the appropriate matrix to address
-            if normalized:
-                matrix = self._normalized_matrix
-            else:
-                matrix = self._matrix
-
-            # Use the entity index to slice the matrix and return the embedding vector
-            return matrix[[self._entity_ix[i] for i in items]]
-
-    def __getitem__(self, items: Union[str, Sequence[str]]) -> np.array:
-        """ Syntactic sugar to get method. Will return the un-normalized matrix """
-        return self.get(items)
-
-    # def similarity(self, a: Union[str, Sequence[str]], b: Optional[Union[str, Sequence[str]]] = None) -> np.ndarray:
-    #     """
-    #     Computes the cosine similarity of an entity with respect to all other entities or a subset of entities
-    #     :param a: Key or keys to our query to compute the cosine similarity
-    #     :param b: Another entity of subset of entities to compute the cosine similarity with a.
-    #               If None, then result a vector with all the similarities
-    #     :return: Array with the numpy similarity wrt
-    #     """
-    #
-    #     if type(a) == str:
-    #         a = [a]
-    #
-    #     # Get the normalized version  of the key vector. Reshape it to make it a column vector
-    #     va = self.get(a, normalized=True)  # 300 is the embedding size
-    #
-    #     # Fetch the normalized matrix
-    #     matrix = self._normalized_matrix
-    #
-    #     # Since both operands are normalized with L2, cosine similarity reduces to a dot product
-    #     similarities = matrix @ va.transpose()
-    #
-    #     # If a subset was requested, slice the similarities vector to select the appropriate indices
-    #     if b is not None:
-    #         # If the second entity is just one, make a list with as single elements
-    #         if type(b) == str:
-    #             b = [b]
-    #         # Fetch the indices in the matrix of the requested entities
-    #         indices = [self._entity_ix[e] for e in b]
-    #         # Return the appropriate subset of the similarities vector
-    #         return similarities[indices, range(len(indices))]  # .reshape(1, )
-    #     else:
-    #         # Return all the similarities vector
-    #         return similarities
-
-    # TODO Deprecated
-    # def similarity(self, a: Union[str, Sequence[str]], b: Optional[Union[str, Sequence[str]]] = None) -> np.ndarray:
-    #     """
-    #     Computes the cosine similarity of an entity with respect to all other entities or a subset of entities
-    #     :param a: Key or keys to our query to compute the cosine similarity
-    #     :param b: Another entity of subset of entities to compute the cosine similarity with a.
-    #               If None, then result a vector with all the similarities
-    #     :return: Array with the numpy similarity wrt
-    #     """
-    #
-    #     if type(a) == str:
-    #         a = [a]
-    #
-    #     # Fetch the normalized matrix
-    #     similarities = self._similarities
-    #
-    #     # If a subset was requested, slice the similarities vector to select the appropriate indices
-    #     if b is not None:
-    #         # If the second entity is just one, make a list with as single elements
-    #         if type(b) == str:
-    #             b = [b]
-    #         # Fetch the indices in the matrix of the requested entities
-    #         indices_a = [self._entity_ix[e] for e in a]
-    #         indices_b = [self._entity_ix[e] for e in b]
-    #         # Return the appropriate subset of the similarities vector
-    #         return similarities[indices_a, indices_b]  # .reshape(1, )
-    #     else:
-    #         # Return all the similarities vector
-    #         return similarities
-
-    def similarity(self, a: Union[str, Sequence[str]], b: Union[str, Sequence[str]]) -> np.ndarray:
-        """
-        Computes the cosine similarity of an entity with respect to all other entities or a subset of entities
-        :param a: Key or keys to our query to compute the cosine similarity
-        :param b: Another entity of subset of entities to compute the cosine similarity with a.
-                  If None, then result a vector with all the similarities
-        :return: Array with the numpy similarity wrt
-        """
-
-        if type(a) == str:
-            a = [a]
-
-        # If a subset was requested, slice the similarities vector to select the appropriate indices
-        if b is not None:
-            # If the second entity is just one, make a list with as single elements
-            if type(b) == str:
-                b = [b]
-            # Fetch the indices in the matrix of the requested entities
-            indices_a = [self._entity_ix[e] for e in a]
-            indices_b = [self._entity_ix[e] for e in b]
-            # Return the appropriate subset of the similarities vector
-            return similarities[indices_a, indices_b]  # .reshape(1, )
-        else:
-            # Return all the similarities vector
-            return similarities
-
-    def top_k(self, a: str, k: int):
-        """ Return the top k neighbors to the requested entity """
-
-        # Compute the similarities with respect to all the entities
-        sims = self.similarity(a)
-        # Rank them by their value
-        ranked = np.argsort(sims, axis=0)
-        # Since the most similar elements are those with the highest values, select the last K members, and ignore
-        # The last element which is the key entity itself
-        selected = ranked[-k - 1:-2].squeeze()
-        # Resolve the identity of the neighbors and reverse the order to return them with the expected order
-        return list(reversed([self._inv_entity_ix[s] for s in selected]))
