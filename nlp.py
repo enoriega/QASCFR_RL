@@ -14,7 +14,7 @@ from spacy.language import Language
 from spacy.tokens import Doc
 
 import utils
-from machine_reading.ir.document_frequencies import FrequencyCounter
+from machine_reading.ir.frequency_counter import FrequencyCounter
 
 
 @lru_cache(maxsize=5)

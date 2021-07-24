@@ -1,40 +1,31 @@
-import math
 import pickle
+from functools import partial
 from pathlib import Path
-from typing import Dict, Sequence, Mapping
 
 import spacy
 from tqdm import tqdm
 
 import utils
+from machine_reading.ir.frequency_counter import FrequencyCounter
 from nlp import preprocess
 import itertools as it
-from collections import Counter
+
+from multiprocessing import Pool
 
 
-class FrequencyCounter:
-    def __init__(self, docs: Sequence[str]) -> None:
-        self.num_docs = len(docs)
-        self.term_freqs = Counter()
-        self.doc_freqs = Counter()
-        self.idf = dict()
-
-        for doc in docs:
-            seen = set()
-            for term in doc:
-                self.term_freqs[term] += 1
-                if term not in seen:
-                    self.doc_freqs[term] += 1
-                    seen.add(term)
-
-        self.idf = {k: math.log(self.num_docs / v) for k, v in self.doc_freqs.items()}
+def partial_process(pipeline, elements):
+    return preprocess(elements, pipeline)
 
 
 def compute_frequencies(path: Path) -> FrequencyCounter:
     pipeline = spacy.load("en_core_web_sm")
     with path.open('r') as f:
-        processed = preprocess(tqdm(f, desc="Pre-processing corpus"), pipeline)
-        counter = FrequencyCounter(tqdm(processed, desc="Counting terms"))
+        elems = f
+        g = partial(partial_process, pipeline)
+        with Pool(16) as ctx:
+            processed = ctx.map(g, elems)
+            # processed = preprocess(tqdm(elems, desc="Pre-processing corpus"), pipeline)
+        counter = FrequencyCounter(tqdm(list(it.chain.from_iterable(processed)), desc="Counting terms"))
     return counter
 
 
