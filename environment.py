@@ -17,7 +17,7 @@ from parsing import QASCInstance, Pair
 
 from machine_reading.ie import RedisWrapper
 from machine_reading.ir.es import QASCIndexSearcher
-from nlp import EmbeddingSpaceHelper, preprocess, load_stop_words
+from nlp import preprocess, load_stop_words
 from tfidf import TfIdfHelper
 from topic_modeling import TopicsHelper
 
@@ -82,7 +82,7 @@ def get_terms(phrase:str) -> str:
     return " ".join(kept)
 
 
-class QASCInstance:
+class QASCInstanceEnvironment:
     """ Represents the environment on which a problem is operated """
 
     # Store the assembled knowledge graphs here to avoid hitting the indices repeatedly
@@ -90,13 +90,13 @@ class QASCInstance:
 
     def __init__(self, problem: QASCInstance, max_iterations: int, use_embeddings: bool, num_top_entities: int,
                  seed: int, ir_index: QASCIndexSearcher, redis: RedisWrapper,
-                 vector_space: EmbeddingSpaceHelper  #, topics_helper: TopicsHelper,
+                 #vector_space: EmbeddingSpaceHelper  #, topics_helper: TopicsHelper,
                  # tfidf_helper: TfIdfHelper, nlp: Language) -> None:
                  ) -> None:
         self.problem = problem
         self.ir_index = ir_index
         self.redis = redis
-        self._vector_space = vector_space
+        # self._vector_space = vector_space
         # self._topics_helper = topics_helper
         # self._tfidf_helper = tfidf_helper
         # self._nlp = nlp
@@ -259,7 +259,7 @@ class QASCInstance:
         # The document set
         docs = self.doc_set
 
-        cache = QASCInstance._kg_cache
+        cache = QASCInstanceEnvironment._kg_cache
         cache_key = (start, end, frozenset(docs))
         if cache_key in cache:
             return cache[cache_key]
@@ -309,7 +309,7 @@ class QASCInstance:
         # Use the inverted index to get the documents returned by the query
         qt = query.type
 
-        lucene = QASCIndexSearcher()
+        ir_index = self.ir_index
         if query.endpoints is None or len(query.endpoints) == 0:
             return set(), qt
         else:
@@ -332,8 +332,9 @@ class QASCInstance:
                     raise Exception("Invalid query")
 
             try:
-                result = lucene.search(query_str, max_hits)
+                result = ir_index.search(query_str, max_hits)
             except Exception as ex:
+                print(ex)
                 result = list()
 
             docs = {doc for doc, score in result}

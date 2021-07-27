@@ -7,10 +7,10 @@ from tqdm import tqdm
 import utils
 from baselines.cascade import CascadeAgent
 from machine_reading.ie import RedisWrapper
-from nlp import EmbeddingSpaceHelper
+# from nlp import EmbeddingSpaceHelper
 from parsing import read_problems, QASCInstance
-from environment import QASCInstance
-from machine_reading.ir.lucene import QASCIndexSearcher
+from environment import QASCInstanceEnvironment
+from machine_reading.ir.es import QASCIndexSearcher
 from utils import build_rng
 
 
@@ -76,9 +76,9 @@ def main():
     instances = read_problems(files_config['train_file'])
     seed_state = build_rng(0)
     agent = CascadeAgent(seed_state)
-    lucene = QASCIndexSearcher(files_config['lucene_index_dir'])
+    index = QASCIndexSearcher()
     redis = RedisWrapper()
-    vector_space = EmbeddingSpaceHelper(spacy.blank("en"))
+    # vector_space = EmbeddingSpaceHelper(spacy.blank("en"))
 
     # results = dict()
     with open(output_main, 'w') as a, open(output_paths, 'w') as b:
@@ -92,7 +92,7 @@ def main():
             for seed in seed_state.randint(0, 100000, 15):
                 try:
                     # Instantiate the environment
-                    env = QASCInstance(instance, 10, True, 15, seed, lucene, redis, None)
+                    env = QASCInstanceEnvironment(instance, 10, True, 15, seed, index, redis)
                     result = agent.run(env)
                     # results[(instance, seed)] = (env, result)
                     main_row, aux_rows = make_csv_row(env, instance, result, seed)

@@ -4,7 +4,7 @@ from typing import Optional, List
 from numpy.random import RandomState
 
 from actions import Query, QueryType
-from environment import QASCInstance
+from environment import QASCInstanceEnvironment
 
 
 class Agent(abc.ABC):
@@ -20,7 +20,7 @@ class CascadeAgent(Agent):
     # def __init__(self, rng:RandomState) -> None:
     #     self.rng = rng
 
-    def run(self, env: QASCInstance) -> Optional[List[str]]:
+    def run(self, env: QASCInstanceEnvironment) -> Optional[List[str]]:
         """ Runs the cascade baseline over the specified environment.
         The environment mutates.
         Returns path when found, otherwise None"""
