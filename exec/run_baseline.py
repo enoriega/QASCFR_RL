@@ -8,13 +8,13 @@ import utils
 from baselines.cascade import CascadeAgent
 from machine_reading.ie import RedisWrapper
 # from nlp import EmbeddingSpaceHelper
-from parsing import read_problems, QASCInstance
+from parsing import read_problems, QASCItem
 from environment import QASCInstanceEnvironment
 from machine_reading.ir.es import QASCIndexSearcher
 from utils import build_rng
 
 
-def contains_gt(instance: QASCInstance, paths):
+def contains_gt(instance: QASCItem, paths):
     facts = instance.gt_path
     ret = False
     for p in paths:

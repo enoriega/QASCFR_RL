@@ -16,8 +16,8 @@ import utils
 from actions import Query, QueryType
 from machine_reading.ie import RedisWrapper
 from machine_reading.ir.es import QASCIndexSearcher
-from parsing import QASCInstance
-from environment import QASCInstance
+from parsing import QASCItem
+from environment import QASCItem
 from nlp import EmbeddingSpaceHelper
 
 Observation = np.ndarray
@@ -27,7 +27,7 @@ EnvInfo = namedtuple("EnvInfo", "papers outcome query_type, query_entity")
 
 @dataclass
 class QASCInstanceFactory:
-    problems: List[QASCInstance]
+    problems: List[QASCItem]
     use_embeddings: bool
     num_top_entities: int
     # use_generational_ranking: bool
@@ -57,8 +57,8 @@ class QASCInstanceFactory:
 
         seed = self.rng.randint(0, int(1e6), size=1)
 
-        env = QASCInstance(sampled, 10, self.use_embeddings, self.num_top_entities, seed, self.index, self.redis,
-                           self.vector_space)
+        env = QASCItem(sampled, 10, self.use_embeddings, self.num_top_entities, seed, self.index, self.redis,
+                       self.vector_space)
 
         return env
 

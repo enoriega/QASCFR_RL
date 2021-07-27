@@ -13,7 +13,7 @@ from spacy.language import Language
 
 import utils
 from actions import Query, QueryType
-from parsing import QASCInstance, Pair
+from parsing import QASCItem, Pair
 
 from machine_reading.ie import RedisWrapper
 from machine_reading.ir.es import QASCIndexSearcher
@@ -88,7 +88,7 @@ class QASCInstanceEnvironment:
     # Store the assembled knowledge graphs here to avoid hitting the indices repeatedly
     _kg_cache = WeakValueDictionary()
 
-    def __init__(self, problem: QASCInstance, max_iterations: int, use_embeddings: bool, num_top_entities: int,
+    def __init__(self, problem: QASCItem, max_iterations: int, use_embeddings: bool, num_top_entities: int,
                  seed: int, ir_index: QASCIndexSearcher, redis: RedisWrapper,
                  #vector_space: EmbeddingSpaceHelper  #, topics_helper: TopicsHelper,
                  # tfidf_helper: TfIdfHelper, nlp: Language) -> None:

@@ -19,7 +19,7 @@ class Edge(NamedTuple):
     docs: FrozenSet[str]
 
 
-class QASCInstance(NamedTuple):
+class QASCItem(NamedTuple):
     """ Represents a problem to be operated over in an environment by an agent """
     question: str
     answer: str
@@ -33,7 +33,7 @@ class QASCInstance(NamedTuple):
         question = data['question']['stem']
         answer = choices[data['answerKey']]
 
-        return QASCInstance(question, answer, tuple(facts))
+        return QASCItem(question, answer, tuple(facts))
 
 
 class Results(NamedTuple):
@@ -51,7 +51,7 @@ class Results(NamedTuple):
         return sum(len(d) for d in self.differential_phrases)
 
 
-def read_problems(path: Union[Path, str]) -> List[QASCInstance]:
+def read_problems(path: Union[Path, str]) -> List[QASCItem]:
     """
     Read the problems from the shelve file and return an iterable to operate over them
     This function might change to limit the scope of each run
@@ -62,7 +62,7 @@ def read_problems(path: Union[Path, str]) -> List[QASCInstance]:
         path = Path(path)
 
     with path.open('r') as f:
-        data = [QASCInstance.from_json_line(line) for line in f]
+        data = [QASCItem.from_json_line(line) for line in f]
 
     return data
 

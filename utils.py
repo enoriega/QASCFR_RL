@@ -10,13 +10,13 @@ from pandas import DataFrame
 from rlpyt.utils.launching.affinity import encode_affinity
 from tqdm import tqdm
 
-from parsing import Results, Pair, QASCInstance
+from parsing import Results, Pair, QASCItem
 
 
 # from environment import ResultsKey
 
 class ResultsKey(NamedTuple):
-    problem: QASCInstance
+    problem: QASCItem
     seed: int
 
 
