@@ -3,6 +3,7 @@ from typing import Optional, List
 
 from numpy.random import RandomState
 
+import nlp
 from actions import Query, QueryType
 from environment import QASCInstanceEnvironment
 
@@ -29,33 +30,37 @@ class CascadeAgent(Agent):
         finished = False
         path = None
 
+        prev_cov = 0.
         while not finished:
-            and_pairs = env.get_eligible_pairs(env._and_log)
-            or_pairs = env.get_eligible_pairs(env._or_log)
-            # Try first with the "AND pairs". If none available, fall back to the "OR pairs"
-            candidate_pairs = and_pairs if len(and_pairs) > 0 else or_pairs
 
-            # If there are not any more candidate pairs, then exit the loop
-            if len(candidate_pairs) == 0:
-                finished = True
+            query = env.query
+
+            # Run it through lucene
+            docs = env.fetch_docs(query)
+
+            # Reconcile the elements with the environment
+            env.add_docs(docs)
+
+            ranked = env.ranked_docs()
+
+            exploit_sentence = ranked[-1][0]
+            explore_sentence = ranked[0][0]
+
+            exploit_coverage = nlp.air_coverage(query,
+                                                nlp.preprocess(env.explanation + [exploit_sentence], env._language))
+            explore_coverage = nlp.air_coverage(query,
+                                                nlp.preprocess(env.explanation + [explore_sentence], env._language))
+
+            if exploit_coverage > prev_cov:
+                env.explanation.append(exploit_sentence)
+                prev_cov = exploit_coverage
             else:
-                # First execute an AND query
-                ix = rng.randint(0, len(candidate_pairs))  # Randomly choose a pair of AND entities
-                candidate_entities = candidate_pairs[ix]
-                query = Query(candidate_entities, QueryType.And)
+                env.explanation.append(explore_sentence)
+                prev_cov = explore_coverage
 
-                # Run it through lucene
-                docs, _ = env.fetch_docs(query)
 
-                # If returned an empty set, then try OR
-                if len(docs) == 0:
-                    query = Query(candidate_entities, QueryType.Or)
-                    docs, _ = env.fetch_docs(query)
-
-                # Reconcile the elements with the environment
-                env.add_docs(docs, query)
-
-                # Check the status of the search
-                finished, path = env.status
+            # Check the status of the search
+            finished = env.status
+            path = env.explanation
 
         return path

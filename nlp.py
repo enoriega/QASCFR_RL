@@ -54,12 +54,14 @@ def stemmed_stop_words() -> FrozenSet[str]:
     return frozenset(stemmer.stem(w) for w in load_stop_words())
 
 
-@lru_cache(maxsize=10000)
-def preprocess(text: Union[str, Iterable[str]], nlp: Language) -> Iterable[Sequence[str]]:
+# @lru_cache(maxsize=10000)
+def preprocess(text: Union[str, Iterable[str]], nlp: Language) -> Union[Sequence[str], Iterable[Sequence[str]]]:
     """ Splits the input string into a sequence of tokens. Everything is done lazily """
 
+    return_str = False
     # Make sure we do the "batched" version even if its a single input text
     if type(text) == str:
+        return_str = True
         text = [text]
 
     # Normalize and tokenize. Replace the underscores of the entities for white spaces
@@ -75,7 +77,11 @@ def preprocess(text: Union[str, Iterable[str]], nlp: Language) -> Iterable[Seque
     stemmer = SnowballStemmer(language='english')
 
     # Return a generator that will return the tokens as long as they're not a stop word
-    return [[w for w in (stemmer.stem(token.text) for token in doc) if w not in stop_words] for doc in docs]
+    res = [[w for w in (token.text for token in doc) if w not in stop_words] for doc in docs]
+    if return_str:
+        return res[0]
+    else:
+        return res
 
 
 def average_embedding(tokens: Sequence[str],
@@ -126,12 +132,15 @@ def load_term_frequencies() -> FrequencyCounter:
     return freqs
 
 
-def air_s(query_terms: List[str], phrase_terms: List[str], model: KeyedVectors) -> float:
+def air_s(query_terms: Iterable[str], phrase_terms: Iterable[str], model: KeyedVectors) -> float:
+    # Filter out the terms not in the model to avoid triggering an exception
+    query_terms = [t for t in query_terms if t in model]
+    phrase_terms = [t for t in phrase_terms if t in model]
     phrase_matrix = model[phrase_terms]
     return sum(idf(q) * air_align(q, phrase_matrix, model) for q in query_terms)
 
 
-def air_remaining(query_terms: Sequence[str], explanations_terms: Sequence[Sequence[str]]) -> Set[str]:
+def air_remaining(query_terms: Iterable[str], explanations_terms: Iterable[Iterable[str]]) -> Set[str]:
     """ Returns the set of terms not yet covered by an explanation """
 
     query = set(query_terms)
@@ -142,10 +151,14 @@ def air_remaining(query_terms: Sequence[str], explanations_terms: Sequence[Seque
     return query - explanation
 
 
-def air_coverage(query_terms: Sequence[str], explanations_terms: Sequence[Sequence[str]]) -> float:
+def air_coverage(query_terms: Iterable[str], explanations_terms: Iterable[Iterable[str]]) -> float:
     """ Returns the coverage of terms in the query by the explanations' terms """
     query = set(query_terms)
 
-    intersections = sum(len(query & set(exp)) for exp in explanations_terms)
-    return intersections / len(query)
+    intersections = [(query & set(exp)) for exp in explanations_terms]
+    union = set()
+    for intersection in intersections:
+        union |= intersection
+
+    return len(union) / len(query)
 

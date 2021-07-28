@@ -1,7 +1,9 @@
 import csv
+from typing import cast
 
 import pandas as pd
 import spacy
+from gensim.models import KeyedVectors
 from tqdm import tqdm
 
 import utils
@@ -78,7 +80,8 @@ def main():
     agent = CascadeAgent(seed_state)
     index = QASCIndexSearcher()
     redis = RedisWrapper()
-    # vector_space = EmbeddingSpaceHelper(spacy.blank("en"))
+    embeddings = cast(KeyedVectors, KeyedVectors.load('data/glove.840B.300d.kv'))
+    language = spacy.load("en_core_web_sm")
 
     # results = dict()
     with open(output_main, 'w') as a, open(output_paths, 'w') as b:
@@ -89,10 +92,10 @@ def main():
         paths_writer.writeheader()
 
         for ix, instance in tqdm(enumerate(instances), desc="Running baseline over dataset", total=len(instances)):
-            for seed in seed_state.randint(0, 100000, 15):
+            for seed in seed_state.randint(0, 100000, 1):
                 try:
                     # Instantiate the environment
-                    env = QASCInstanceEnvironment(instance, 10, True, 15, seed, index, redis)
+                    env = QASCInstanceEnvironment(instance, 10, True, 15, seed, index, redis, embeddings, language)
                     result = agent.run(env)
                     # results[(instance, seed)] = (env, result)
                     main_row, aux_rows = make_csv_row(env, instance, result, seed)
