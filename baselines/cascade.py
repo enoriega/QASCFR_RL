@@ -1,5 +1,5 @@
 import abc
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from numpy.random import RandomState
 
@@ -21,7 +21,7 @@ class CascadeAgent(Agent):
     # def __init__(self, rng:RandomState) -> None:
     #     self.rng = rng
 
-    def run(self, env: QASCInstanceEnvironment) -> Optional[List[str]]:
+    def run(self, env: QASCInstanceEnvironment) -> Tuple[List[str], bool]:
         """ Runs the cascade baseline over the specified environment.
         The environment mutates.
         Returns path when found, otherwise None"""
@@ -51,16 +51,18 @@ class CascadeAgent(Agent):
             explore_coverage = nlp.air_coverage(query,
                                                 nlp.preprocess(env.explanation + [explore_sentence], env._language))
 
-            if exploit_coverage > prev_cov:
-                env.explanation.append(exploit_sentence)
+            #if exploit_coverage > explore_coverage:
+            if True:
+                env.add_explanation(exploit_sentence)
                 prev_cov = exploit_coverage
             else:
-                env.explanation.append(explore_sentence)
+                env.add_explanation(explore_sentence)
                 prev_cov = explore_coverage
 
 
             # Check the status of the search
             finished = env.status
+            outcome = env.success
             path = env.explanation
 
-        return path
+        return path, outcome

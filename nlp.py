@@ -140,13 +140,16 @@ def air_s(query_terms: Iterable[str], phrase_terms: Iterable[str], model: KeyedV
     return sum(idf(q) * air_align(q, phrase_matrix, model) for q in query_terms)
 
 
-def air_remaining(query_terms: Iterable[str], explanations_terms: Iterable[Iterable[str]]) -> Set[str]:
+def air_remaining(query_terms: Iterable[str], explanations_terms: Iterable[Iterable[str]], model: KeyedVectors) -> Set[str]:
     """ Returns the set of terms not yet covered by an explanation """
 
     query = set(query_terms)
     explanation = set()
     for exp in explanations_terms:
         explanation |= set(exp)
+
+    phrase_matrix = model[[e for e in explanation if e in model]]
+    # filtered_query = {q for q in query if air_align(q, phrase_matrix, model) >= 0.70}
 
     return query - explanation
 

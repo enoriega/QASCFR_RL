@@ -58,18 +58,7 @@ class CandidatePair(NamedTuple):
 
 
 # @lru_cache(maxsize=128)
-def _determine_outcome(query: Set[str], explanation: Sequence[str], language: Language) -> bool:
-    """ Factored out this method to leverage the LRU decorator """
-    # Determine if the problem is finished by the query coverage metric
 
-    explanation_terms = preprocess(explanation, language)
-
-    coverage = air_coverage(query, explanation_terms)
-
-    if coverage == 1.0:
-        return True
-    else:
-        return False
 
 
 def get_terms(phrase: str) -> str:
@@ -98,9 +87,6 @@ class QASCInstanceEnvironment:
         self.ir_index = ir_index
         self.redis = redis
         self.embeddings = embeddings
-        # self._vector_space = vector_space
-        # self._topics_helper = topics_helper
-        # self._tfidf_helper = tfidf_helper
         self._language = language
         self._seed = seed
         self._use_embeddings = use_embeddings
@@ -126,6 +112,8 @@ class QASCInstanceEnvironment:
 
         self.explanation: List[str] = list()
         self._query: Set[str] = set()
+        self._curr_remaining: Set[str] = set()
+        self._prev_remaining: Set[str] = set()
 
         # This is to do the ablation tests
         config = utils.read_config()
@@ -139,18 +127,13 @@ class QASCInstanceEnvironment:
 
     @property
     def query(self) -> Iterable[str]:
+
         # Terms of the question and answer:
         if len(self.explanation) == 0:
             item = self.problem
             q_terms = preprocess(item.question, self._language)
             a_terms = preprocess(item.answer, self._language)
             self._query = set(it.chain(q_terms, a_terms))
-        else:
-            remaining = nlp.air_remaining(self._query, preprocess(self.explanation, self._language))
-            if len(remaining) <= 4:
-                # Query expansion
-                explanation_terms = set(it.chain.from_iterable(preprocess(self.explanation, self._language)))
-                self._query = (remaining | (explanation_terms - self._query))
 
         return self._query
 
@@ -158,6 +141,32 @@ class QASCInstanceEnvironment:
     def num_docs(self) -> int:
         """ Returns the size of the document set """
         return len(self.doc_set)
+
+    @property
+    def changed_remaining(self):
+        if self.iterations == 1:
+            return True
+        else:
+            prev = self._prev_remaining
+            curr = self._curr_remaining
+
+            return curr != prev
+
+    def _determine_outcome(self, query: Set[str], explanation: Sequence[str], language: Language) -> bool:
+        """ Factored out this method to leverage the LRU decorator """
+        # Determine if the problem is finished by the query coverage metric
+
+        changed_remaining = self.changed_remaining
+
+        explanation_terms = preprocess(explanation, language)
+
+        coverage = air_coverage(query, explanation_terms)
+
+
+        if coverage == 1.0:
+            return True
+        else:
+            return False
 
     @property
     def status(self) -> bool:
@@ -169,16 +178,31 @@ class QASCInstanceEnvironment:
             False, None, if there's no path in the KG
         """
 
-        # First build a graph with the documents of the set
-        # kg = self.kg
-
-        finished = _determine_outcome(self.query, self.explanation, self._language)
+        finished = self.success
 
         # Time out when the max number of iterations is reached
         if not finished and self.iterations == self.max_iterations:
             finished = True
 
         return finished
+
+    @property
+    def success(self):
+        return self._determine_outcome(self.query, self.explanation, self._language)
+
+    def add_explanation(self, phrase: str):
+        # Keep track of remaining terms
+        self._prev_remaining = self._curr_remaining
+        self.explanation.append(phrase)
+        remaining = nlp.air_remaining(self._query, preprocess(self.explanation, self._language), self.embeddings)
+        self._curr_remaining = remaining
+
+        if len(remaining) <= 4:
+            # Query expansion
+            explanation_terms = set(it.chain.from_iterable(preprocess(self.explanation, self._language)))
+            self._query = (remaining | (explanation_terms - self._query))
+            remaining = nlp.air_remaining(self._query, preprocess(self.explanation, self._language), self.embeddings)
+            self._curr_remaining = remaining
 
     @property
     def path(self) -> Optional[Sequence[str]]:

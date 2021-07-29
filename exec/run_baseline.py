@@ -1,4 +1,5 @@
 import csv
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import cast
 
 import pandas as pd
@@ -14,6 +15,11 @@ from parsing import read_problems, QASCItem
 from environment import QASCInstanceEnvironment
 from machine_reading.ir.es import QASCIndexSearcher
 from utils import build_rng
+
+index = None
+redis = None
+embeddings = None
+language = None
 
 
 def contains_gt(instance: QASCItem, paths):
@@ -59,16 +65,45 @@ def make_csv_row(env, instance, paths, seed):
 
     aux_rows = list()
 
+    if len(paths) > 0 and type(paths[0]) == str:
+        paths = [paths]
+
     for path in paths:
         path_len = len(path)
         path_str = ' || '.join(path)
-        aux_rows.append({'q': q, 'a': a, 'seed': seed, 'hops': path_len - 1, 'intermediate': path_str[1:][:-1]})
+        aux_rows.append({'q': q, 'a': a, 'seed': seed, 'hops': path_len - 1, 'intermediate': path_str})
 
     return main_row, aux_rows
 
 
+def test(instance, seed_state, ix):
+    global index, redis, embeddings, language
+    x = 1
+    return 0.0
+
+
+def schedule(instance, seed_state, ix):
+    global index, redis, embeddings, language
+
+    agent = CascadeAgent(seed_state)
+
+    for seed in seed_state.randint(0, 100000, 1):
+        try:
+            # Instantiate the environment
+            env = QASCInstanceEnvironment(instance, 10, True, 15, seed, index, redis, embeddings, language)
+            result, outcome = agent.run(env)
+            main_row, aux_rows = make_csv_row(env, instance, result, seed)
+            return main_row, aux_rows
+        except Exception as ex:
+            print(f'Problem with instance {ix}')
+            print(ex)
+
+
 def main():
     # Read the config values
+
+    global index, redis, embeddings, language
+
     config = utils.read_config()
     files_config = config['files']
     local_config = config['run_baseline']
@@ -77,7 +112,9 @@ def main():
 
     instances = read_problems(files_config['train_file'])
     seed_state = build_rng(0)
-    agent = CascadeAgent(seed_state)
+
+    global index, redis, embeddings, language
+
     index = QASCIndexSearcher()
     redis = RedisWrapper()
     embeddings = cast(KeyedVectors, KeyedVectors.load('data/glove.840B.300d.kv'))
@@ -91,19 +128,25 @@ def main():
         results_writer.writeheader()
         paths_writer.writeheader()
 
-        for ix, instance in tqdm(enumerate(instances), desc="Running baseline over dataset", total=len(instances)):
-            for seed in seed_state.randint(0, 100000, 1):
-                try:
-                    # Instantiate the environment
-                    env = QASCInstanceEnvironment(instance, 10, True, 15, seed, index, redis, embeddings, language)
-                    result = agent.run(env)
-                    # results[(instance, seed)] = (env, result)
-                    main_row, aux_rows = make_csv_row(env, instance, result, seed)
+        # This is necessary to share the global variables among processes, but only works on unix-like platforms
+        import multiprocessing as mp
+        mp.set_start_method('fork')
+
+        with ProcessPoolExecutor(max_workers=12) as ctx:
+            futures = list()
+            progress = tqdm(desc="Running baseline over dataset", total=len(instances))
+            for ix, instance in enumerate(instances):
+                future = ctx.submit(schedule, instance, seed_state, ix)
+                futures.append(future)
+
+            for future in as_completed(futures):
+                data = future.result()
+                if data:
+                    main_row, aux_row = data
                     results_writer.writerow(main_row)
-                    paths_writer.writerows(aux_rows)
-                except Exception as ex:
-                    print(f'Problem with instance {ix}')
-                    print(ex)
+                    paths_writer.writerows(aux_row)
+                progress.update(1)
+
 
     # crunch_numbers(results)
 
