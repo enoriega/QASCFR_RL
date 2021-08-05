@@ -119,7 +119,7 @@ def build_and_train(slot_affinity_code: str,
 
     model_params = {
         "input_shape": throwaway_env.observe.shape[0],
-        "action_space_size": throwaway_env.num_top_entities * 3,
+        "action_space_size": 10,
         "use_embeddings": use_embeddings,
         "entity_dropout": embeddings_dropout
     }
@@ -135,8 +135,8 @@ def build_and_train(slot_affinity_code: str,
         batch_B=batch_size,
         max_decorrelation_steps=decorrelation_steps,
         eval_n_envs=8,#5//len(testing_factory.problems),
-        eval_max_steps=len(testing_factory.problems)*10,
-        eval_max_trajectories=len(testing_factory.problems),
+        eval_max_steps=100,#len(testing_factory.problems)*10,
+        eval_max_trajectories=10,
     )
 
     # Resolve the correct network size and params

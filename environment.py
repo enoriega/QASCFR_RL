@@ -206,9 +206,6 @@ class QASCInstanceEnvironment:
             remaining = nlp.air_remaining(self._query, preprocess(self.explanation, self._language), self.embeddings)
             self._curr_remaining = remaining
 
-        # Update the previous score, to prepare it for the next
-        self._prev_score = self.fr_score
-
     @property
     def path(self) -> Optional[Sequence[str]]:
         """ Returns the path connecting the endpoints of the problem or None if it is non existent """
@@ -292,7 +289,7 @@ class QASCInstanceEnvironment:
         self._or_log = set()
         self._singleton_log = set()
         self._rng = utils.build_rng(self._seed)
-        self.query = set()
+        self._query = set()
         self.explanation = list()
 
     def ranked_docs(self) -> Sequence[Tuple[str, float]]:
@@ -306,15 +303,17 @@ class QASCInstanceEnvironment:
 
     @property
     def fr_score(self) -> float:
-        explanation_terms = set(preprocess(self.explanation, self._language))
-        remaining = self._curr_remaining
-        qa_terms = set(preprocess(self.problem.question, self._language)) | \
-                  set(preprocess(self.problem.answer, self._language))
-
-        explanation_coverage = len(explanation_terms - remaining) / len(explanation_terms)
-        original_coverage = len(qa_terms - explanation_terms) / len(qa_terms)
-
-        return explanation_coverage + original_coverage
+        # explanation_terms = set(it.chain.from_iterable(preprocess(self.explanation, self._language)))
+        # remaining = self._curr_remaining
+        # qa_terms = set(preprocess(self.problem.question, self._language)) | \
+        #           set(preprocess(self.problem.answer, self._language))
+        #
+        # explanation_coverage = len(explanation_terms - remaining) / len(explanation_terms)
+        # original_coverage = len(qa_terms - explanation_terms) / len(qa_terms)
+        #
+        # return explanation_coverage + original_coverage
+        return nlp.air_coverage(self.query,
+                         nlp.preprocess(self.explanation, self._language))
 
     def rl_reward(self) -> float:
         """ Returns the RL reward signal """

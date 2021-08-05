@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Union, NamedTuple, Tuple
 
-QueryType = Enum("QueryType", "And Or Singleton Cascade", module=__name__)
+QueryType = IntEnum("QueryType", "And Or Singleton Cascade", module=__name__)
 
 
 class Query(NamedTuple):

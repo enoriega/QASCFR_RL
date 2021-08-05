@@ -1,10 +1,11 @@
 from collections import namedtuple
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple, NamedTuple, List, Union, Optional
+from typing import Tuple, NamedTuple, List, Union, Optional, cast
 
 import numpy as np
 import spacy
+from gensim.models import KeyedVectors
 from numpy.random.mtrand import RandomState
 from rlpyt.envs.base import Env
 from rlpyt.spaces.float_box import FloatBox
@@ -17,8 +18,9 @@ from actions import Query, QueryType
 from machine_reading.ie import RedisWrapper
 from machine_reading.ir.es import QASCIndexSearcher
 from parsing import QASCItem
-from environment import QASCItem
-from nlp import EmbeddingSpaceHelper
+from environment import QASCItem, QASCInstanceEnvironment
+
+# from nlp import EmbeddingSpaceHelper
 
 Observation = np.ndarray
 
@@ -35,7 +37,7 @@ class QASCInstanceFactory:
     nlp: Language
     index: QASCIndexSearcher
     redis: RedisWrapper
-    vector_space: EmbeddingSpaceHelper
+    vector_space: KeyedVectors
 
     # topics: TopicsHelper
     # tfidf: TfIdfHelper
@@ -57,8 +59,12 @@ class QASCInstanceFactory:
 
         seed = self.rng.randint(0, int(1e6), size=1)
 
-        env = QASCItem(sampled, 10, self.use_embeddings, self.num_top_entities, seed, self.index, self.redis,
-                       self.vector_space)
+        # env = QASCItem(sampled, 10, self.use_embeddings, self.num_top_entities, seed, self.index, self.redis,
+        #                self.vector_space)
+
+        item = QASCItem(sampled.question, sampled.answer, sampled.gt_path)
+        env = QASCInstanceEnvironment(item, 10, self.use_embeddings, self.num_top_entities, seed, self.index,
+                                      self.redis, self.vector_space, self.nlp)
 
         return env
 
@@ -75,9 +81,10 @@ class QASCInstanceFactory:
 
         # index, inverted_index = utils.build_indices(indices_path)
 
-        nlp = spacy.load("en_core_web_lg")
+        nlp = spacy.load("en_core_web_sm")
 
-        vector_space = EmbeddingSpaceHelper(nlp)
+        # vector_space = EmbeddingSpaceHelper(nlp)
+        vector_space = cast(KeyedVectors, KeyedVectors.load('data/glove.840B.300d.kv'))
         # topics_helper = TopicsHelper.from_shelf(lda_path)
         # tfidf_helper = TfIdfHelper.build_tfidf(corpus_path)
         rng = utils.build_rng(seed)
@@ -106,7 +113,7 @@ class RlpytEnv(Env):
         self.instance = env
 
         # Set up the action and observation spaces
-        self._action_space = IntBox(0, high=((len(QueryType) - 1) * env.num_top_entities))
+        self._action_space = IntBox(0, high=10)
         self._observation_space = FloatBox(-1, 1, (13,))
         pass
 
@@ -122,47 +129,32 @@ class RlpytEnv(Env):
 
         env = self.instance
 
-        entity_ix = action % env.num_top_entities
-        type_code = action // env.num_top_entities
+        query = env.query
 
-        # action = action.reshape((1,))
-        # Map the action from int to query
-        type_ = QueryType(type_code + 1)
-        # Select the entities form the environment
-        if type_ == QueryType.And:
-            if entity_ix < len(env.and_entities):
-                endpoints = tuple(env.and_entities[entity_ix].pair)
-            else:
-                endpoints = tuple()
-        elif type_ == QueryType.Or:
-            if entity_ix < len(env.or_entities):
-                endpoints = tuple(env.or_entities[entity_ix].pair)
-            else:
-                endpoints = tuple()
-        elif type_ == QueryType.Singleton:
-            if entity_ix < len(env.singleton_entity):
-                endpoints = env.singleton_entity[entity_ix].entity
-            else:
-                endpoints = None
-        else:
-            raise RuntimeError("Unsupported query type")
+        # Run it through lucene
+        docs = env.fetch_docs(query)
 
-        query = Query(endpoints, type_)
+        # Reconcile the elements with the environment
+        env.add_docs(docs)
+
+        candidates = env.ranked_docs()
+
+        chosen = candidates[action][0]
+
+        env.add_explanation(chosen)
 
         # If shaping reward, observe the potential before mutating the environment
         if self._do_reward_shaping:
-            prev_potential = self.instance.shaping_potential()
+            prev_potential = env.shaping_potential()
         else:
             prev_potential = 0
 
-        # Fetch the incremental documents from the query
-        new_docs, realized_query_type = env.fetch_docs(query)
-        # Add them to the environment
-        realized_query = Query(query.endpoints, realized_query_type)
-        env.add_docs(new_docs, query=realized_query)
 
         # Test whether if the trial is finished
-        done, reward = self.instance.rl_reward()
+        reward = env.rl_reward()
+        # Update the previous score, to prepare it for the next
+        env._prev_score = env.fr_score
+        done = env.status
 
         # Shape the reward if requested
         if self._do_reward_shaping:
@@ -173,7 +165,8 @@ class RlpytEnv(Env):
         # Generate the environment observation
         obs = self.observe()
 
-        env_info = EnvInfo(papers=len(new_docs), outcome=bool(env), query_type=type_.value, query_entity=entity_ix)
+        env_info = EnvInfo(papers=len(env.doc_set), outcome=env.success, query_type=int(QueryType.And),
+                           query_entity=int(action))
 
         return obs, np.float(reward), done, env_info
 
