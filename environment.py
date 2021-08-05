@@ -262,7 +262,7 @@ class QASCInstanceEnvironment:
         environment """
         ir_index = self.ir_index
         try:
-            result = ir_index.search(' '.join(terms), 10)
+            result = ir_index.search(' '.join(terms), 20)
         except Exception as ex:
             print(ex)
             result = list()

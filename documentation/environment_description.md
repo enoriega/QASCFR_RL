@@ -20,7 +20,17 @@ Explanation set is empty
 - If the search timed out _or_ if early stop action chosen, return failure with explanation set
 
 ## Reward structure
-`TODO`
+- Ratio of matched number of terms in explanation phrases by set of terms in explanation. 
+  Captures the quality of the explanation. Higher number of phrases may be associated to fewer overlap
+    
+- Ratio of matched number of terms in Q + A by set of terms in explanation. Proxy of whether there is a "path"
+
+Potentially:
+
+- Normalized number of iterations or living reward
+
+This reward could either be computed differentially on each iteration (as a delta) or as a delayed reward at the end.
+    
 
 ---
 ## Necessary elements
