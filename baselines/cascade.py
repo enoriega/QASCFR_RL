@@ -51,6 +51,7 @@ class CascadeAgent(Agent):
             explore_coverage = nlp.air_coverage(query,
                                                 nlp.preprocess(env.explanation + [explore_sentence], env._language))
 
+
             #if exploit_coverage > explore_coverage:
             if True:
                 env.add_explanation(exploit_sentence)

@@ -115,6 +115,8 @@ class QASCInstanceEnvironment:
         self._curr_remaining: Set[str] = set()
         self._prev_remaining: Set[str] = set()
 
+        self._prev_score: float = 0.
+
         # This is to do the ablation tests
         config = utils.read_config()
 
@@ -190,7 +192,7 @@ class QASCInstanceEnvironment:
     def success(self):
         return self._determine_outcome(self.query, self.explanation, self._language)
 
-    def add_explanation(self, phrase: str):
+    def add_explanation(self, phrase: str) -> None:
         # Keep track of remaining terms
         self._prev_remaining = self._curr_remaining
         self.explanation.append(phrase)
@@ -203,6 +205,9 @@ class QASCInstanceEnvironment:
             self._query = (remaining | (explanation_terms - self._query))
             remaining = nlp.air_remaining(self._query, preprocess(self.explanation, self._language), self.embeddings)
             self._curr_remaining = remaining
+
+        # Update the previous score, to prepare it for the next
+        self._prev_score = self.fr_score
 
     @property
     def path(self) -> Optional[Sequence[str]]:
@@ -298,6 +303,26 @@ class QASCInstanceEnvironment:
         scores = [nlp.air_s(self.query, e, self.embeddings) for e in preprocess(docs, self._language)]
 
         return list(sorted(zip(docs, scores), key=lambda s: s[1]))
+
+    @property
+    def fr_score(self) -> float:
+        explanation_terms = set(preprocess(self.explanation, self._language))
+        remaining = self._curr_remaining
+        qa_terms = set(preprocess(self.problem.question, self._language)) | \
+                  set(preprocess(self.problem.answer, self._language))
+
+        explanation_coverage = len(explanation_terms - remaining) / len(explanation_terms)
+        original_coverage = len(qa_terms - explanation_terms) / len(qa_terms)
+
+        return explanation_coverage + original_coverage
+
+    def rl_reward(self) -> float:
+        """ Returns the RL reward signal """
+
+        prev = self._prev_score
+        current = self.fr_score
+
+        return current - prev
 
     @property
     def observe(self) -> np.ndarray:
