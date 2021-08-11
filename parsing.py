@@ -23,7 +23,7 @@ class QASCItem(NamedTuple):
     """ Represents a problem to be operated over in an environment by an agent """
     question: str
     answer: str
-    gt_path: Sequence[Tuple[str]]
+    gt_path: Sequence[str]
 
     @staticmethod
     def from_json_line(element: str):

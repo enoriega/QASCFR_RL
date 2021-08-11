@@ -2,7 +2,7 @@ from elasticsearch import Elasticsearch
 from functools import lru_cache
 from typing import List, Tuple
 
-special_characters = '+ - && || ! ( ) { } [ ] ^ " ~ * ? : \\ / . ,'.split()
+special_characters = '+ - && || ! { } [ ] ^ " ~ * ? : \\ / . ,'.split()
 
 
 def clean_query(text):
@@ -18,7 +18,7 @@ class QASCIndexSearcher:
         self._client = Elasticsearch()
 
     # function to retrieve results based on a query string
-    @lru_cache(maxsize=2048)
+    #@lru_cache(maxsize=2048)
     def search(self, query_string: str, max_hits: int) -> List[Tuple[str, float]]:
         query_string = clean_query(query_string)
 

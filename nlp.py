@@ -7,7 +7,7 @@ from typing import Sequence, Union, Mapping, Iterable, Optional, cast, FrozenSet
 import numpy as np
 import spacy
 from gensim.models import KeyedVectors
-from nltk import PorterStemmer, SnowballStemmer
+from nltk import PorterStemmer, SnowballStemmer, word_tokenize
 from numpy.typing import ArrayLike
 from spacy.lang.en.stop_words import STOP_WORDS
 from spacy.language import Language
@@ -55,7 +55,7 @@ def stemmed_stop_words() -> FrozenSet[str]:
 
 
 # @lru_cache(maxsize=10000)
-def preprocess(text: Union[str, Iterable[str]], nlp: Language) -> Union[Sequence[str], Iterable[Sequence[str]]]:
+def preprocess(text: Union[str, Iterable[str]], nlp: Language, stem: Optional[bool] = False) -> Union[Sequence[str], Iterable[Sequence[str]]]:
     """ Splits the input string into a sequence of tokens. Everything is done lazily """
 
     return_str = False
@@ -65,10 +65,30 @@ def preprocess(text: Union[str, Iterable[str]], nlp: Language) -> Union[Sequence
         text = [text]
 
     # Normalize and tokenize. Replace the underscores of the entities for white spaces
-    text = (t.lower().strip().replace("_", " ") for t in text)
+    text = (t.lower().strip().replace("_", " ")\
+            .replace("-", " ")\
+            .replace("?", "")\
+            .replace("!", "")\
+            .replace(".", "")\
+            .replace(",", "")\
+            .replace(":", "")\
+            .replace(";", "") for t in text)
+            # for t in text)
+
+    # # Pipe the text for efficient tokenization. Disable the tagger and parser for now
+    # docs = nlp.pipe(text, disable=['parser'])
+    #
+    # # Fetch the stop words
+    # stop_words = load_stop_words()
+    #
+    # # Do some stemming with this
+    # stemmer = SnowballStemmer(language='english')
+    #
+    # # Return a generator that will return the tokens as long as they're not a stop word
+    # res = [[stemmer.stem(w) if stem else w for w in (token.text for token in doc) if w not in stop_words] for doc in docs]
 
     # Pipe the text for efficient tokenization. Disable the tagger and parser for now
-    docs = nlp.pipe(text, disable=['parser'])
+    docs =[word_tokenize(t) for t in text]
 
     # Fetch the stop words
     stop_words = load_stop_words()
@@ -77,7 +97,8 @@ def preprocess(text: Union[str, Iterable[str]], nlp: Language) -> Union[Sequence
     stemmer = SnowballStemmer(language='english')
 
     # Return a generator that will return the tokens as long as they're not a stop word
-    res = [[w for w in (token.text for token in doc) if w not in stop_words] for doc in docs]
+    res = [[stemmer.stem(w) if stem else w for w in doc if w not in stop_words] for doc in
+           docs]
     if return_str:
         return res[0]
     else:
