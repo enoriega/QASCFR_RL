@@ -148,16 +148,16 @@ def eval(data: Mapping[QASCItem, RetrievalResults]) -> DataFrame:
     return frame
 
 def main(path: Path) -> None:
-    retrieval_data = two_step_retrieval(path)
-    with open('retrieval_results2.pickle', 'wb') as f:
-        pickle.dump(retrieval_data, f)
+    # retrieval_data = two_step_retrieval(path)
+    # with open('retrieval_results2.pickle', 'wb') as f:
+    #     pickle.dump(retrieval_data, f)
 
-    # with open('retrieval_results.pickle', 'rb') as f:
-    #     retrieval_data = pickle.load(f)
-    #
-    # frame = eval(retrieval_data)
-    # # frame.to_pickle("heuristic_baseline2.pickle")
-    # print(frame.head())
+    with open('data/retrieval_results.pickle', 'rb') as f:
+        retrieval_data = pickle.load(f)
+
+    frame = eval(retrieval_data)
+    frame.to_pickle("heuristic_baseline.pickle")
+    print(frame.head())
 
 if __name__ == "__main__":
     config = utils.read_config()

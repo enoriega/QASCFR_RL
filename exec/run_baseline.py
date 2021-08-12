@@ -1,11 +1,13 @@
 import csv
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import pickle
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from typing import cast
 
 import pandas as pd
 import spacy
 from gensim.models import KeyedVectors
 from tqdm import tqdm
+import itertools as it
 
 import utils
 from baselines.cascade import CascadeAgent
@@ -24,13 +26,17 @@ language = None
 
 def contains_gt(instance: QASCItem, paths):
     facts = instance.gt_path
-    ret = False
+    total = False
+    partial = False
     for p in paths:
         nodes = set(p)
         if facts[0] in nodes and facts[1] in nodes:
-            ret = True
+            total = True
+            partial = True
             break
-    return ret
+        elif facts[0] in nodes or facts[1] in nodes:
+            partial = True
+    return total, partial
 
 
 def crunch_numbers(results, output_main, output_paths):
@@ -52,15 +58,18 @@ def make_csv_row(env, instance, paths, seed):
     """ Prepares the data from a trail into rows to write to a csv """
 
     q, a = instance.question, instance.answer
-    successful = contains_gt(instance, paths)
+    successful, partially_successful = contains_gt(instance, [paths])
     num_docs = env.num_docs
     num_paths = len(paths)
     iterations = env.iterations
+    coverage = env.fr_score
     main_row = \
         {'q': q, 'a': a, 'seed': seed,
          'iterations': iterations,
          'docs': num_docs,
+         'coverage': coverage,
          'success': successful,
+         'partial_success': partially_successful,
          'paths': num_paths}
 
     aux_rows = list()
@@ -82,7 +91,7 @@ def test(instance, seed_state, ix):
     return 0.0
 
 
-def schedule(instance, seed_state, ix):
+def schedule(instance, doc_universe, seed_state, ix):
     global index, redis, embeddings, language
 
     agent = CascadeAgent(seed_state)
@@ -90,7 +99,7 @@ def schedule(instance, seed_state, ix):
     for seed in seed_state.randint(0, 100000, 1):
         try:
             # Instantiate the environment
-            env = QASCInstanceEnvironment(instance, 10, True, 15, seed, index, redis, embeddings, language)
+            env = QASCInstanceEnvironment(instance, 10, True, 15, seed, index, redis, embeddings, language, doc_universe)
             result, outcome = agent.run(env)
             main_row, aux_rows = make_csv_row(env, instance, result, seed)
             return main_row, aux_rows
@@ -110,6 +119,13 @@ def main():
     output_main = local_config['output_main']
     output_paths = local_config['output_paths']
 
+    with open(files_config['retrieval_results'], 'rb') as f:
+        data = pickle.load(f)
+        doc_universes = dict()
+        for item, results in data.items():
+            docs = set(it.chain.from_iterable(v[0] for v in results))
+            doc_universes[item] = docs
+
     instances = read_problems(files_config['train_file'])
     seed_state = build_rng(0)
 
@@ -122,7 +138,7 @@ def main():
 
     # results = dict()
     with open(output_main, 'w') as a, open(output_paths, 'w') as b:
-        results_writer = csv.DictWriter(a, fieldnames=['q', 'a', 'seed', 'iterations', 'docs', 'success', 'paths'])
+        results_writer = csv.DictWriter(a, fieldnames=['q', 'a', 'seed', 'iterations', 'docs', 'success', 'partial_success', 'coverage', 'paths'])
         paths_writer = csv.DictWriter(b, fieldnames=['q', 'a', 'seed', 'hops', 'intermediate'])
 
         results_writer.writeheader()
@@ -132,11 +148,12 @@ def main():
         import multiprocessing as mp
         mp.set_start_method('fork')
 
-        with ProcessPoolExecutor(max_workers=12) as ctx:
+        # Multi processing
+        with ThreadPoolExecutor(max_workers=11) as ctx:
             futures = list()
             progress = tqdm(desc="Running baseline over dataset", total=len(instances))
             for ix, instance in enumerate(instances):
-                future = ctx.submit(schedule, instance, seed_state, ix)
+                future = ctx.submit(schedule, instance, doc_universes[instance], seed_state, ix)
                 futures.append(future)
 
             for future in as_completed(futures):
@@ -146,6 +163,16 @@ def main():
                     results_writer.writerow(main_row)
                     paths_writer.writerows(aux_row)
                 progress.update(1)
+
+        # # Single process
+        # progress = tqdm(desc="Running baseline over dataset", total=len(instances))
+        # for ix, instance in enumerate(instances):
+        #     data = schedule(instance, doc_universes[instance], seed_state, ix)
+        #     if data:
+        #         main_row, aux_row = data
+        #         results_writer.writerow(main_row)
+        #         paths_writer.writerows(aux_row)
+        #     progress.update(1)
 
 
     # crunch_numbers(results)

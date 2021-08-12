@@ -128,7 +128,7 @@ def air_align(anchor_term: str, phrase_terms: Union[ArrayLike, List[str]], model
 
     # In case we don't have the matrix of embeddings yet
     if type(phrase_terms) == list:
-        phrase_terms = model[phrase_terms]
+        phrase_terms = model[[t for t in phrase_terms if t in phrase_terms]]
 
     similarities = cast(ArrayLike, KeyedVectors.cosine_similarities(anchor, phrase_terms))
 
@@ -157,8 +157,11 @@ def air_s(query_terms: Iterable[str], phrase_terms: Iterable[str], model: KeyedV
     # Filter out the terms not in the model to avoid triggering an exception
     query_terms = [t for t in query_terms if t in model]
     phrase_terms = [t for t in phrase_terms if t in model]
-    phrase_matrix = model[phrase_terms]
-    return sum(idf(q) * air_align(q, phrase_matrix, model) for q in query_terms)
+    if len(phrase_terms) == 0:
+        return 0.
+    else:
+        phrase_matrix = model[phrase_terms]
+        return sum(idf(q) * air_align(q, phrase_matrix, model) for q in query_terms)
 
 
 def air_remaining(query_terms: Iterable[str], explanations_terms: Iterable[Iterable[str]], model: KeyedVectors) -> Set[str]:
@@ -170,9 +173,9 @@ def air_remaining(query_terms: Iterable[str], explanations_terms: Iterable[Itera
         explanation |= set(exp)
 
     phrase_matrix = model[[e for e in explanation if e in model]]
-    # filtered_query = {q for q in query if air_align(q, phrase_matrix, model) >= 0.70}
+    filtered_query = {q for q in query if q in model and air_align(q, phrase_matrix, model) >= 0.60}
 
-    return query - explanation
+    return filtered_query - explanation
 
 
 def air_coverage(query_terms: Iterable[str], explanations_terms: Iterable[Iterable[str]]) -> float:

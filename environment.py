@@ -81,7 +81,7 @@ class QASCInstanceEnvironment:
                  seed: int, ir_index: QASCIndexSearcher, redis: RedisWrapper, embeddings: KeyedVectors,
                  # vector_space: EmbeddingSpaceHelper  #, topics_helper: TopicsHelper,
                  # tfidf_helper: TfIdfHelper,
-                 language: Language) -> None:
+                 language: Language, doc_universe: Set[str]) -> None:
                  # ) -> None:
         self.problem = problem
         self.ir_index = ir_index
@@ -92,6 +92,7 @@ class QASCInstanceEnvironment:
         self._use_embeddings = use_embeddings
         self.max_iterations = max_iterations
         self.num_top_entities = num_top_entities
+        self.doc_universe = doc_universe
 
         self.doc_set: Set[str] = set()
         self.iterations = 0
@@ -127,17 +128,38 @@ class QASCInstanceEnvironment:
             self._disable_search_state_features = ablation['disable_search'].lower() == 'true'
 
 
+    def expand_query(self):
+        if len(self.explanation) > 0:
+            remaining = self.remaining
+            if len(remaining) <= 4:
+                # Query expansion
+                explanation_terms = set(it.chain.from_iterable(preprocess(self.explanation, self._language, stem=True)))
+                self._query |= explanation_terms
+                # self._query = (remaining | (explanation_terms - self._query))
+                # remaining = nlp.air_remaining(self._query, preprocess(self.explanation, self._language, stem=True),
+                #                               self.embeddings)
+                # self._curr_remaining = remaining
+
     @property
     def query(self) -> Iterable[str]:
 
         # Terms of the question and answer:
         if len(self.explanation) == 0:
             item = self.problem
-            q_terms = preprocess(item.question, self._language)
-            a_terms = preprocess(item.answer, self._language)
+            q_terms = preprocess(item.question, self._language, stem=True)
+            a_terms = preprocess(item.answer, self._language, stem=True)
             self._query = set(it.chain(q_terms, a_terms))
 
         return self._query
+
+    @property
+    def remaining(self):
+        # if len(self.explanation) == 0:
+        #     return set(self.query)
+        # else:
+        #     return nlp.air_remaining(self.query, preprocess(self.explanation, self._language, stem=True), self.embeddings)
+        explanation_terms = set(it.chain.from_iterable(preprocess(self.explanation, self._language, stem=True)))
+        return self.query - explanation_terms
 
     @property
     def num_docs(self) -> int:
@@ -148,9 +170,11 @@ class QASCInstanceEnvironment:
     def changed_remaining(self):
         if self.iterations == 1:
             return True
+        elif len(self.doc_set) == 0:
+            return False
         else:
             prev = self._prev_remaining
-            curr = self._curr_remaining
+            curr = self.remaining
 
             return curr != prev
 
@@ -158,12 +182,9 @@ class QASCInstanceEnvironment:
         """ Factored out this method to leverage the LRU decorator """
         # Determine if the problem is finished by the query coverage metric
 
-        changed_remaining = self.changed_remaining
-
-        explanation_terms = preprocess(explanation, language)
+        explanation_terms = preprocess(explanation, language, stem=True)
 
         coverage = air_coverage(query, explanation_terms)
-
 
         if coverage == 1.0:
             return True
@@ -180,7 +201,10 @@ class QASCInstanceEnvironment:
             False, None, if there's no path in the KG
         """
 
-        finished = self.success
+        changed_remaining = self.changed_remaining
+        successful = self.success
+
+        finished = not changed_remaining or successful
 
         # Time out when the max number of iterations is reached
         if not finished and self.iterations == self.max_iterations:
@@ -194,17 +218,8 @@ class QASCInstanceEnvironment:
 
     def add_explanation(self, phrase: str) -> None:
         # Keep track of remaining terms
-        self._prev_remaining = self._curr_remaining
+        self._prev_remaining = self.remaining
         self.explanation.append(phrase)
-        remaining = nlp.air_remaining(self._query, preprocess(self.explanation, self._language), self.embeddings)
-        self._curr_remaining = remaining
-
-        if len(remaining) <= 4:
-            # Query expansion
-            explanation_terms = set(it.chain.from_iterable(preprocess(self.explanation, self._language)))
-            self._query = (remaining | (explanation_terms - self._query))
-            remaining = nlp.air_remaining(self._query, preprocess(self.explanation, self._language), self.embeddings)
-            self._curr_remaining = remaining
 
     @property
     def path(self) -> Optional[Sequence[str]]:
@@ -221,8 +236,6 @@ class QASCInstanceEnvironment:
 
         # Add the new docs
         self.doc_set |= new_docs
-        # Every time we add docs, we increment the iteration counter
-        self.iterations += 1
         # Keep track of which where the latest doc added to the graph
         self._latest_docs = frozenset(new_docs)
 
@@ -297,7 +310,7 @@ class QASCInstanceEnvironment:
         docs = [doc for doc in self.doc_set if doc not in self.explanation]  # Find the eligible docs
 
         # Rank them by alignment
-        scores = [nlp.air_s(self.query, e, self.embeddings) for e in preprocess(docs, self._language)]
+        scores = [nlp.air_s(self.remaining, e, self.embeddings) for e in preprocess(docs, self._language, stem=True)]
 
         return list(sorted(zip(docs, scores), key=lambda s: s[1]))
 
@@ -313,7 +326,7 @@ class QASCInstanceEnvironment:
         #
         # return explanation_coverage + original_coverage
         return nlp.air_coverage(self.query,
-                         nlp.preprocess(self.explanation, self._language))
+                         nlp.preprocess(self.explanation, self._language, stem=True))
 
     def rl_reward(self) -> float:
         """ Returns the RL reward signal """
