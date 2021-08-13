@@ -2,7 +2,7 @@
 import itertools
 import pickle
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Sequence, Tuple, Mapping
+from typing import Sequence, Tuple, Mapping, List
 from pathlib import Path
 
 import pandas as pd
@@ -11,6 +11,7 @@ from nltk import SnowballStemmer
 from pandas import DataFrame
 from spacy import Language
 import itertools as it
+import re
 
 from tqdm import tqdm
 
@@ -20,6 +21,46 @@ from nlp import preprocess
 from parsing import read_problems, QASCItem
 
 RetrievalResults = Sequence[Tuple[Tuple[str, str], float]]
+
+
+# These lines where taken from https://github.com/allenai/ARC-Solvers/blob/8f21cb821b3a457f25535ccd1b5cddb01ed1bc4e/arc_solvers/processing/es_search.py
+negation_regexes = [re.compile(r) for r in ["not\\s", "n't\\s", "except\\s"]]
+
+def is_clean_sentence(s):
+    # must only contain expected characters, should be single-sentence and only uses hyphens
+    # for hyphenated words
+    return (re.match("^[a-zA-Z0-9][a-zA-Z0-9;:,\(\)%\-\&\.'\"\s]+\.?$", s) and
+            not re.match(".*\D\. \D.*", s) and
+            not re.match(".*\s\-\s.*", s))
+
+# Remove hits that contain negation, are too long, are duplicates, are noisy.
+def filter_hits(hits: List[Tuple[str, float]]) -> List[Tuple[str, float]]:
+    filtered_hits = []
+    selected_hit_keys = set()
+    for text, score in hits:
+        hit_sentence = text
+        hit_sentence = hit_sentence.strip().replace("\n", " ")
+        if len(hit_sentence) > 300:
+            continue
+        for negation_regex in negation_regexes:
+            if negation_regex.search(hit_sentence):
+                # ignore hit
+                continue
+        if get_key(hit_sentence) in selected_hit_keys:
+            continue
+        if not is_clean_sentence(hit_sentence):
+            continue
+        filtered_hits.append((text, score))
+        selected_hit_keys.add(get_key(hit_sentence))
+    return filtered_hits
+
+
+# Create a de-duplication key for a HIT
+def get_key(hit):
+    # Ignore characters that do not effect semantics of a sentence and URLs
+    return re.sub('[^0-9a-zA-Z\.\-^;&%]+', '', re.sub('http[^ ]+', '', hit)).strip().rstrip(".")
+
+###############################################
 
 
 def qualifies(phrase: str) -> bool:
@@ -40,7 +81,8 @@ def retrieve_candidates(item: QASCItem, language: Language) -> RetrievalResults 
     f_1 = searcher.search(' '.join(q_a), 20)
 
     pairs = list()
-    for phrase, p_score in f_1:
+    qualifying = filter_hits(f_1)
+    for phrase, p_score in qualifying:
         if qualifies(phrase):
             phrase_terms = set(preprocess(phrase, language, stem=False))
             phrase_terms_stem = {stemmer.stem(t) for t in phrase_terms}
@@ -58,7 +100,7 @@ def retrieve_candidates(item: QASCItem, language: Language) -> RetrievalResults 
 
             try:
                 selected = 0
-                x = searcher.search(query, 500)
+                x = filter_hits(searcher.search(query, 500))
                 for candidate, c_score in x:
                     candidate_terms = set(preprocess(candidate, language, stem=False))
                     candidate_terms_stem = {stemmer.stem(t) for t in candidate_terms}
@@ -92,7 +134,7 @@ def two_step_retrieval(path: Path) -> Mapping[QASCItem, RetrievalResults]:
 
 
 
-    # # Single process
+    # Single process
     # for item in tqdm(items, desc='Retrieving matches'):
     #     candidates = retrieve_candidates(item, language)
     #     results[item] = candidates
@@ -152,7 +194,7 @@ def main(path: Path) -> None:
     # with open('retrieval_results2.pickle', 'wb') as f:
     #     pickle.dump(retrieval_data, f)
 
-    with open('data/retrieval_results.pickle', 'rb') as f:
+    with open('retrieval_results2.pickle', 'rb') as f:
         retrieval_data = pickle.load(f)
 
     frame = eval(retrieval_data)
