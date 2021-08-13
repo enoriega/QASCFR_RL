@@ -78,45 +78,81 @@ def retrieve_candidates(item: QASCItem, language: Language) -> RetrievalResults 
     stemmer = SnowballStemmer(language='english')
     q_a_stem = set(stemmer.stem(t) for t in q_a)
 
-    f_1 = searcher.search(' '.join(q_a), 20)
+    f_1 = searcher.search(item.question + " " + item.answer, 100)
 
     pairs = list()
-    qualifying = filter_hits(f_1)
+    qualifying = filter_hits(f_1)[:20]
     for phrase, p_score in qualifying:
-        if qualifies(phrase):
-            phrase_terms = set(preprocess(phrase, language, stem=False))
-            phrase_terms_stem = {stemmer.stem(t) for t in phrase_terms}
-            left = q_terms - phrase_terms
-            right =  phrase_terms - q_terms
-            if ' '.join(left).strip():
-                query = f"({' OR '.join(left)})"
-                if len(right) > 0:
-                    query += f" AND ({' OR '.join(right)})"
-            else:
-                if len(right) > 0:
-                    query = f"({' OR '.join(right)})"
-                else:
-                    continue
+        phrase_terms = set(preprocess(phrase, language, stem=False))
+        phrase_terms_stem = {stemmer.stem(t) for t in phrase_terms}
+        left = q_terms - phrase_terms
+        right =  phrase_terms - q_terms
 
-            try:
-                selected = 0
-                x = filter_hits(searcher.search(query, 500))
-                for candidate, c_score in x:
-                    candidate_terms = set(preprocess(candidate, language, stem=False))
-                    candidate_terms_stem = {stemmer.stem(t) for t in candidate_terms}
-                    # Filter any candidate pair that don't share terms with q+a
-                    if phrase != candidate and\
-                            len((phrase_terms_stem - q_a_stem) & candidate_terms_stem) > 0 and\
-                            len((q_a_stem - phrase_terms_stem) & candidate_terms_stem) > 0 and\
-                            len(q_a_stem & (phrase_terms_stem | candidate_terms_stem)) > 0:
-                        pairs.append(((phrase, candidate), p_score + c_score))
-                        selected += 1
-                    if selected >= 4:
-                        break
-            except:
-                print("error for query " + query)
+        query = phrase
+
+        # if ' '.join(left).strip():
+        #     query = f"({' OR '.join(left)})"
+        #     if len(right) > 0:
+        #         query += f" AND ({' OR '.join(right)})"
+        # else:
+        #     if len(right) > 0:
+        #         query = f"({' OR '.join(right)})"
+        #     else:
+        #         continue
+
+        try:
+            selected = 0
+            x = filter_hits(searcher.search(query, 500))
+            for candidate, c_score in x:
+                candidate_terms = set(preprocess(candidate, language, stem=False))
+                candidate_terms_stem = {stemmer.stem(t) for t in candidate_terms}
+                # Filter any candidate pair that don't share terms with q+a
+                if phrase != candidate and\
+                        len((phrase_terms_stem - q_a_stem) & candidate_terms_stem) > 0 and\
+                        len((q_a_stem - phrase_terms_stem) & candidate_terms_stem) > 0 and\
+                        len(q_a_stem & (phrase_terms_stem | candidate_terms_stem)) > 0:
+                    pairs.append(((phrase, candidate), p_score + c_score))
+                    selected += 1
+                if selected >= 4:
+                    break
+        except:
+            print("error for query " + query)
 
             x = 0
+        # if qualifies(phrase):
+        #     phrase_terms = set(preprocess(phrase, language, stem=False))
+        #     phrase_terms_stem = {stemmer.stem(t) for t in phrase_terms}
+        #     left = q_terms - phrase_terms
+        #     right =  phrase_terms - q_terms
+        #     if ' '.join(left).strip():
+        #         query = f"({' OR '.join(left)})"
+        #         if len(right) > 0:
+        #             query += f" AND ({' OR '.join(right)})"
+        #     else:
+        #         if len(right) > 0:
+        #             query = f"({' OR '.join(right)})"
+        #         else:
+        #             continue
+        #
+        #     try:
+        #         selected = 0
+        #         x = filter_hits(searcher.search(query, 500))
+        #         for candidate, c_score in x:
+        #             candidate_terms = set(preprocess(candidate, language, stem=False))
+        #             candidate_terms_stem = {stemmer.stem(t) for t in candidate_terms}
+        #             # Filter any candidate pair that don't share terms with q+a
+        #             if phrase != candidate and\
+        #                     len((phrase_terms_stem - q_a_stem) & candidate_terms_stem) > 0 and\
+        #                     len((q_a_stem - phrase_terms_stem) & candidate_terms_stem) > 0 and\
+        #                     len(q_a_stem & (phrase_terms_stem | candidate_terms_stem)) > 0:
+        #                 pairs.append(((phrase, candidate), p_score + c_score))
+        #                 selected += 1
+        #             if selected >= 4:
+        #                 break
+        #     except:
+        #         print("error for query " + query)
+        #
+        #     x = 0
 
     return sorted(pairs, key=lambda x: x[1], reverse=True)
 
@@ -134,7 +170,7 @@ def two_step_retrieval(path: Path) -> Mapping[QASCItem, RetrievalResults]:
 
 
 
-    # Single process
+    # # Single process
     # for item in tqdm(items, desc='Retrieving matches'):
     #     candidates = retrieve_candidates(item, language)
     #     results[item] = candidates
@@ -190,12 +226,12 @@ def eval(data: Mapping[QASCItem, RetrievalResults]) -> DataFrame:
     return frame
 
 def main(path: Path) -> None:
-    # retrieval_data = two_step_retrieval(path)
-    # with open('retrieval_results2.pickle', 'wb') as f:
-    #     pickle.dump(retrieval_data, f)
+    retrieval_data = two_step_retrieval(path)
+    with open('retrieval_results2.pickle', 'wb') as f:
+        pickle.dump(retrieval_data, f)
 
-    with open('retrieval_results2.pickle', 'rb') as f:
-        retrieval_data = pickle.load(f)
+    # with open('retrieval_results2.pickle', 'rb') as f:
+    #     retrieval_data = pickle.load(f)
 
     frame = eval(retrieval_data)
     frame.to_pickle("heuristic_baseline.pickle")
