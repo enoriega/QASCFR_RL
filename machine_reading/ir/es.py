@@ -24,9 +24,12 @@ class QASCIndexSearcher:
 
         body = {
             "query": {
-                "query_string": {
-                    "query": query_string,
-                    "default_field": "phrase"
+                # "query_string": {
+                #     "query": query_string,
+                #     "default_field": "phrase"
+                # }
+                "match": {
+                    "phrase": query_string
                 }
             },
             "size": max_hits
