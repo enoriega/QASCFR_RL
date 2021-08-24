@@ -31,7 +31,7 @@ class CascadeAgent(Agent):
         path = None
 
         # Run it through lucene
-        docs = env.doc_universe  # env.fetch_docs(remaining)
+        docs = {h.text for h in env.doc_universe}  # env.fetch_docs(remaining)
 
         # Reconcile the elements with the environment
         env.add_docs(docs)

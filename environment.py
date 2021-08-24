@@ -15,7 +15,7 @@ from spacy.language import Language
 import nlp
 import utils
 from actions import Query, QueryType
-from parsing import QASCItem, Pair
+from parsing import QASCItem, Pair, EsHit
 
 from machine_reading.ie import RedisWrapper
 from machine_reading.ir.es import QASCIndexSearcher
@@ -81,7 +81,7 @@ class QASCInstanceEnvironment:
                  seed: int, ir_index: QASCIndexSearcher, redis: RedisWrapper, embeddings: KeyedVectors,
                  # vector_space: EmbeddingSpaceHelper  #, topics_helper: TopicsHelper,
                  # tfidf_helper: TfIdfHelper,
-                 language: Language, doc_universe: Set[str]) -> None:
+                 language: Language, doc_universe: Sequence[EsHit]) -> None:
                  # ) -> None:
         self.problem = problem
         self.ir_index = ir_index

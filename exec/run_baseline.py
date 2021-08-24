@@ -119,14 +119,15 @@ def main():
     output_main = local_config['output_main']
     output_paths = local_config['output_paths']
 
-    with open(files_config['retrieval_results'], 'rb') as f:
-        data = pickle.load(f)
-        doc_universes = dict()
-        for item, results in data.items():
-            docs = set(it.chain.from_iterable(v[0] for v in results))
-            doc_universes[item] = docs
+    # Deprecated, now use AI2's code to embbed the top k phrases into the jsonl files
+    # with open(files_config['retrieval_results'], 'rb') as f:
+    #     data = pickle.load(f)
+    #     doc_universes = dict()
+    #     for item, results in data.items():
+    #         docs = set(it.chain.from_iterable(v[0] for v in results))
+    #         doc_universes[item] = docs
 
-    instances = read_problems(files_config['train_file'])
+    instances = read_problems(files_config['dev_file'])
     seed_state = build_rng(0)
 
     global index, redis, embeddings, language
@@ -153,7 +154,7 @@ def main():
             futures = list()
             progress = tqdm(desc="Running baseline over dataset", total=len(instances))
             for ix, instance in enumerate(instances):
-                future = ctx.submit(schedule, instance, doc_universes[instance], seed_state, ix)
+                future = ctx.submit(schedule, instance, instance.facts, seed_state, ix)
                 futures.append(future)
 
             for future in as_completed(futures):
@@ -164,10 +165,10 @@ def main():
                     paths_writer.writerows(aux_row)
                 progress.update(1)
 
-        # # Single process
+        # Single process
         # progress = tqdm(desc="Running baseline over dataset", total=len(instances))
         # for ix, instance in enumerate(instances):
-        #     data = schedule(instance, doc_universes[instance], seed_state, ix)
+        #     data = schedule(instance, instance.facts, seed_state, ix)
         #     if data:
         #         main_row, aux_row = data
         #         results_writer.writerow(main_row)

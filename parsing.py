@@ -2,7 +2,7 @@ import itertools as it
 import pickle
 import json
 from pathlib import Path
-from typing import NamedTuple, Sequence, Tuple, Set, FrozenSet, Union, List
+from typing import NamedTuple, Sequence, Tuple, Set, FrozenSet, Union, List, Optional
 
 from actions import Query
 
@@ -18,22 +18,30 @@ class Edge(NamedTuple):
     pair: Pair
     docs: FrozenSet[str]
 
+class EsHit(NamedTuple):
+    """ Represents a hit from Elastic search """
+    text: str
+    score: float
+
 
 class QASCItem(NamedTuple):
     """ Represents a problem to be operated over in an environment by an agent """
     question: str
     answer: str
     gt_path: Sequence[str]
+    facts: Optional[Sequence[EsHit]]
 
     @staticmethod
     def from_json_line(element: str):
         data = json.loads(element)
-        choices = {c['label']: c['text'] for c in data['question']['choices']}
+        choices = {c['label']: c for c in data['question']['choices']}
         facts = [data['fact1'], data['fact2']]
         question = data['question']['stem']
-        answer = choices[data['answerKey']]
+        answer = choices[data['answerKey']]['text']
+        document_universe = [EsHit(d['text'], d['score']) for d in choices[data['answerKey']]['facts']]
 
-        return QASCItem(question, answer, tuple(facts))
+
+        return QASCItem(question, answer, tuple(facts), document_universe)
 
 
 class Results(NamedTuple):
