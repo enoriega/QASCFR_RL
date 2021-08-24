@@ -10,7 +10,7 @@ from tqdm import tqdm
 import itertools as it
 
 import utils
-from baselines.cascade import CascadeAgent
+from baselines.air import AirAgent
 from machine_reading.ie import RedisWrapper
 # from nlp import EmbeddingSpaceHelper
 from parsing import read_problems, QASCItem
@@ -94,7 +94,7 @@ def test(instance, seed_state, ix):
 def schedule(instance, doc_universe, seed_state, ix):
     global index, redis, embeddings, language
 
-    agent = CascadeAgent(seed_state)
+    agent = AirAgent(seed_state)
 
     for seed in seed_state.randint(0, 100000, 1):
         try:

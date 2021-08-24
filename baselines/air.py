@@ -16,7 +16,7 @@ class Agent(abc.ABC):
         self._rng = rng
 
 
-class CascadeAgent(Agent):
+class AirAgent(Agent):
 
     # def __init__(self, rng:RandomState) -> None:
     #     self.rng = rng
