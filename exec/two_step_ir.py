@@ -78,10 +78,10 @@ def retrieve_candidates(item: QASCItem, language: Language) -> RetrievalResults 
     stemmer = SnowballStemmer(language='english')
     q_a_stem = set(stemmer.stem(t) for t in q_a)
 
-    f_1 = searcher.search(item.question + " " + item.answer, 100)
+    f_1 = searcher.search(item.question + " " + item.answer, 500)
 
     pairs = list()
-    qualifying = filter_hits(f_1)[:20]
+    qualifying = filter_hits(f_1)[:100]
     for phrase, p_score in qualifying:
         phrase_terms = set(preprocess(phrase, language, stem=False))
         phrase_terms_stem = {stemmer.stem(t) for t in phrase_terms}
@@ -113,7 +113,7 @@ def retrieve_candidates(item: QASCItem, language: Language) -> RetrievalResults 
                         len(q_a_stem & (phrase_terms_stem | candidate_terms_stem)) > 0:
                     pairs.append(((phrase, candidate), p_score + c_score))
                     selected += 1
-                if selected >= 4:
+                if selected >= 15:
                     break
         except:
             print("error for query " + query)
@@ -227,7 +227,7 @@ def eval(data: Mapping[QASCItem, RetrievalResults]) -> DataFrame:
 
 def main(path: Path) -> None:
     retrieval_data = two_step_retrieval(path)
-    with open('retrieval_results2.pickle', 'wb') as f:
+    with open('retrieval_results3.pickle', 'wb') as f:
         pickle.dump(retrieval_data, f)
 
     # with open('retrieval_results2.pickle', 'rb') as f:
