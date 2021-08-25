@@ -9,6 +9,7 @@ from weakref import WeakValueDictionary
 import numpy as np
 from gensim.models import KeyedVectors
 # from networkx import Graph, NetworkXNoPath
+from numpy import ndarray
 from scipy import stats
 from spacy.language import Language
 
@@ -34,32 +35,6 @@ class CandidatePair(NamedTuple):
     score: float
 
 
-# TODO Clean up this file
-
-# @lru_cache(maxsize=100)
-# def _get_eligible_pairs(kg: Graph, log: FrozenSet[FrozenSet[str]], singletons: FrozenSet[str]):
-#     """
-#     Generate the pairs to be evaluated for sampling
-#     :param log: If a pair is contained here, it is not included
-#     :return: List with the pairs eligible to be part of a query
-#     """
-#
-#     eligible_pairs = list()
-#     seen = set()
-#     for a in kg.nodes:
-#         for b in kg.nodes:
-#             if a != b and a not in singletons and b not in singletons:
-#                 pair = frozenset((a, b))
-#                 if pair not in log:
-#                     if pair not in seen:
-#                         eligible_pairs.append(pair)
-#                         seen.add(pair)
-#     return eligible_pairs
-
-
-# @lru_cache(maxsize=128)
-
-
 
 def get_terms(phrase: str) -> str:
     # Lower case and tokenize
@@ -77,16 +52,16 @@ class QASCInstanceEnvironment:
     # Store the assembled knowledge graphs here to avoid hitting the indices repeatedly
     _kg_cache = WeakValueDictionary()
 
-    def __init__(self, problem: QASCItem, max_iterations: int, use_embeddings: bool, num_top_entities: int,
+    def __init__(self, item: QASCItem, max_iterations: int, use_embeddings: bool, num_top_entities: int,
                  seed: int, ir_index: QASCIndexSearcher, redis: RedisWrapper, embeddings: KeyedVectors,
                  # vector_space: EmbeddingSpaceHelper  #, topics_helper: TopicsHelper,
                  # tfidf_helper: TfIdfHelper,
                  language: Language, doc_universe: Sequence[EsHit]) -> None:
                  # ) -> None:
-        self.problem = problem
+        self.item = item
         self.ir_index = ir_index
         self.redis = redis
-        self.embeddings = embeddings
+        self.embeddings: KeyedVectors = embeddings
         self._language = language
         self._seed = seed
         self._use_embeddings = use_embeddings
@@ -135,17 +110,14 @@ class QASCInstanceEnvironment:
                 # Query expansion
                 explanation_terms = set(it.chain.from_iterable(preprocess(self.explanation, self._language, stem=True)))
                 self._query |= explanation_terms
-                # self._query = (remaining | (explanation_terms - self._query))
-                # remaining = nlp.air_remaining(self._query, preprocess(self.explanation, self._language, stem=True),
-                #                               self.embeddings)
-                # self._curr_remaining = remaining
+
 
     @property
     def query(self) -> Iterable[str]:
 
         # Terms of the question and answer:
         if len(self.explanation) == 0:
-            item = self.problem
+            item = self.item
             q_terms = preprocess(item.question, self._language, stem=True)
             a_terms = preprocess(item.answer, self._language, stem=True)
             self._query = set(it.chain(q_terms, a_terms))
@@ -154,10 +126,7 @@ class QASCInstanceEnvironment:
 
     @property
     def remaining(self):
-        # if len(self.explanation) == 0:
-        #     return set(self.query)
-        # else:
-        #     return nlp.air_remaining(self.query, preprocess(self.explanation, self._language, stem=True), self.embeddings)
+
         explanation_terms = set(it.chain.from_iterable(preprocess(self.explanation, self._language, stem=True)))
         return self.query - explanation_terms
 
@@ -314,25 +283,21 @@ class QASCInstanceEnvironment:
 
         return list(sorted(zip(docs, scores), key=lambda s: s[1]))
 
-    @property
-    def fr_score(self) -> float:
-        # explanation_terms = set(it.chain.from_iterable(preprocess(self.explanation, self._language)))
-        # remaining = self._curr_remaining
-        # qa_terms = set(preprocess(self.problem.question, self._language)) | \
-        #           set(preprocess(self.problem.answer, self._language))
-        #
-        # explanation_coverage = len(explanation_terms - remaining) / len(explanation_terms)
-        # original_coverage = len(qa_terms - explanation_terms) / len(qa_terms)
-        #
-        # return explanation_coverage + original_coverage
-        return nlp.air_coverage(self.query,
+    def fr_score(self, normalize: bool = False) -> float:
+        score = nlp.air_coverage(self.query,
                          nlp.preprocess(self.explanation, self._language, stem=True))
+
+        if normalize:
+            denominator = len(self.explanation) if len(self.explanation) > 0 else 1
+            score /= denominator
+
+        return score
 
     def rl_reward(self) -> float:
         """ Returns the RL reward signal """
 
         prev = self._prev_score
-        current = self.fr_score
+        current = self.fr_score(normalize=True)
 
         return current - prev
 
@@ -360,148 +325,51 @@ class QASCInstanceEnvironment:
             return self._obs
         else:
 
-            # vs = self._vector_space
-            # topics = self._topics_helper
-            # normalized_iterations = self.iterations / self.max_iterations
+            item = self.item
+            q_emb = self.encode_phrase(item.question)
+            a_emb = self.encode_phrase(item.answer)
+
+            if len(self.explanation) > 0:
+                explanation_embs = list()
+                for phrase in self.explanation:
+                    explanation_embs.append(self.encode_phrase(phrase))
+
+                explanation_embs = np.concatenate(explanation_embs, axis=0)
+
+                ex_emb = np.mean(explanation_embs, axis=0).reshape(1, -1)
+            else:
+                ex_emb = np.zeros_like(q_emb)
+
+
             one_hot_iterations = np.zeros(self.max_iterations + 1)
             one_hot_iterations[self.iterations] = 1
-            # num_edges = len(self.kg.edges)
-            # num_vertices = len(self.kg.nodes)
-            # graph_topics_dist = topics.compute_topic_dist(frozenset(self.doc_set))
 
-            num_entities = self.num_top_entities
 
-            # AND query features
-            # and_features = np.concatenate([self.query_features(QueryType.And, ix, graph_topics_dist)
-            #                                for ix in range(num_entities)])
-            #
-            # # OR query features
-            # or_features = np.concatenate([self.query_features(QueryType.Or, ix, graph_topics_dist)
-            #                               for ix in range(num_entities)])
-            #
-            # # Singleton query features
-            # singleton_features = np.concatenate([self.query_features(QueryType.Singleton, ix, graph_topics_dist)
-            #                                      for ix in range(num_entities)])
-            #
-            # # Put the features together
-            components = list()
-            # for feats in [and_features, or_features, singleton_features]:
-            #     components.append(feats)
-            #
-            if not self._disable_search_state_features:
-                components.append(one_hot_iterations)
-                # components.append([num_edges, num_vertices])
+            # Put the features together
+            components = [q_emb, a_emb, ex_emb]
 
-            obs = np.concatenate(components).astype('float32')
-            #
-            # # If the embeddings where requested, use them
-            # if self._use_embeddings:
-            #     embeddings = vs[[self.problem.question, self.problem.answer]]
-            #     obs = np.concatenate([embeddings[0], embeddings[1], obs])
+            components.append(np.asarray(one_hot_iterations).reshape((1, -1)))
+
+
+            obs = np.concatenate(components, axis=1).astype('float32').reshape(-1)
 
             self._obs = obs
 
             return obs
 
-    # def query_features(self, query_type: QueryType, entity_index: int, graph_topics_dist: np.ndarray) -> np.ndarray:
-    #     if query_type == QueryType.Or:
-    #         log = self._or_log
-    #         eligible_entities = self.or_entities
-    #     elif query_type == QueryType.And:
-    #         log = self._and_log
-    #         eligible_entities = self.and_entities
-    #     elif query_type == QueryType.Singleton:
-    #         log = self._singleton_log
-    #         eligible_entities = self.singleton_entity
-    #     else:
-    #         raise ValueError("Un supported query type")
-    #
-    #     if entity_index < len(eligible_entities):
-    #         if query_type == QueryType.Singleton and (len(self.kg.nodes) - len(log) > 0):
-    #             q = Query(cast(List[CandidateEntity], eligible_entities)[entity_index].entity, QueryType.Singleton)
-    #             features = [eligible_entities[entity_index].score] + self.topic_features(graph_topics_dist, q)
-    #         elif len(self.get_eligible_pairs(log)) > 0:
-    #             q = Query(eligible_entities[entity_index].pair, query_type)
-    #             features = [eligible_entities[entity_index].score] + self.topic_features(graph_topics_dist, q)
-    #         else:
-    #             features = np.zeros(shape=(4,))
-    #     else:
-    #         features = np.zeros(shape=(4,))
-    #
-    #     if self._disable_topic_features:
-    #         features = features[0:-2]
-    #     if self._disable_query_features:
-    #         features = features[2:]
-    #
-    #     return features
-    #
-    # def topic_features(self, graph_topics_dist: np.ndarray, query: Query) -> List[float]:
-    #     """ Computes the entropy and divergence query features """
-    #
-    #     topics = self._topics_helper
-    #
-    #     # Identify the new documents that would be added
-    #     new_docs, _ = self.fetch_docs(query)
-    #
-    #     # Count them
-    #     num_new_docs = len(new_docs)
-    #     # Compute the topic distribution of the new proposed documents
-    #     new_docs_dist = topics.compute_topic_dist(frozenset(new_docs))
-    #     # Compute the entropy of that distribution
-    #     new_docs_entropy = stats.entropy(new_docs_dist)
-    #     # Get the distribution and entropy of the latest documents
-    #     last_query_dist = topics.compute_topic_dist(self.latest_docs)
-    #     last_query_entropy = stats.entropy(last_query_dist)
-    #     # Compute the delta entropy
-    #     delta_entropy = new_docs_entropy - last_query_entropy
-    #     # Compute the KL-Divergence of the graph distribution and of the latest documents
-    #     differential_divergence = stats.entropy(graph_topics_dist, new_docs_dist)
-    #
-    #     # Put them together and return the results
-    #     features = [num_new_docs, delta_entropy, differential_divergence]
-    #     return features
-    #
-    #
-    # def rl_reward(self) -> Tuple[bool, float]:
-    #     """ Computes the reward for RL """
-    #
-    #     # Figure out if the environment contains a path
-    #     succeeded = bool(self)
-    #
-    #     # This is the reward component based on the outcome of the search
-    #     success_reward = 1000
-    #
-    #     num_papers = len(self.latest_docs)
-    #
-    #     # return the corresponding reward, either the outcome reward or the living reward
-    #     reward = -num_papers * 3
-    #     if succeeded:
-    #         reward += success_reward
-    #         finished = True
-    #     else:
-    #         if num_papers == 0:
-    #             reward -= 100
-    #
-    #         if self.iterations == self.max_iterations:
-    #             finished = True
-    #         else:
-    #             finished = False
-    #
-    #     return finished, reward
-    #
-    # def shaping_potential(self) -> float:
-    #     """ Returns the shaping potential used for reward shaping """
-    #     total_potential = 1000
-    #     problem = self.problem
-    #     gt_path = problem.gt_path
-    #     edge_potential = total_potential / len(gt_path)
-    #     kg = self.kg
-    #     num_present_edges = 0
-    #     for (a, b) in gt_path:
-    #         if (a, b) in kg.edges:
-    #             num_present_edges += 1
-    #
-    #     if num_present_edges == 0:
-    #         return 0
-    #     else:
-    #         return edge_potential * num_present_edges
+    def encode_phrase(self, phrase: str) -> ndarray:
+        embeddings = self.embeddings
+        embs = list()
+        for w in nlp.preprocess(phrase, self._language, stem=True):
+
+            if w in embeddings:
+                embs.append(embeddings[w].reshape(1, 300))
+            else:
+                embs.append(embeddings['OOV'].reshape(1, 300))
+
+        if len(embs) > 0:
+            avg_emb = np.mean(np.stack(embs), axis=0)
+        else:
+            avg_emb = embeddings['OOV'].reshape(1, 300)
+
+        return avg_emb

@@ -3,6 +3,7 @@ import pickle
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from typing import cast
 
+import numpy as np
 import pandas as pd
 import spacy
 from gensim.models import KeyedVectors
@@ -13,6 +14,7 @@ import utils
 from baselines.air import AirAgent
 from machine_reading.ie import RedisWrapper
 # from nlp import EmbeddingSpaceHelper
+from nlp import load_embeddings
 from parsing import read_problems, QASCItem
 from environment import QASCInstanceEnvironment
 from machine_reading.ir.es import QASCIndexSearcher
@@ -134,7 +136,7 @@ def main():
 
     index = QASCIndexSearcher()
     redis = RedisWrapper()
-    embeddings = cast(KeyedVectors, KeyedVectors.load('data/glove.840B.300d.kv'))
+    embeddings = load_embeddings('data/glove.840B.300d.kv')
     language = spacy.load("en_core_web_sm")
 
     # results = dict()

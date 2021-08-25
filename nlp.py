@@ -189,3 +189,11 @@ def air_coverage(query_terms: Iterable[str], explanations_terms: Iterable[Iterab
 
     return len(union) / len(query)
 
+
+def load_embeddings(path: str) -> KeyedVectors:
+    embs = cast(KeyedVectors, KeyedVectors.load(path))
+    oov = np.random.random((300,))
+    oov /= np.linalg.norm(oov)
+    embs['OOV'] = oov
+
+    return embs

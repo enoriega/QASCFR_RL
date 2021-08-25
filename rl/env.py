@@ -17,6 +17,7 @@ import utils
 from actions import Query, QueryType
 from machine_reading.ie import RedisWrapper
 from machine_reading.ir.es import QASCIndexSearcher
+from nlp import load_embeddings
 from parsing import QASCItem
 from environment import QASCItem, QASCInstanceEnvironment
 
@@ -62,9 +63,9 @@ class QASCInstanceFactory:
         # env = QASCItem(sampled, 10, self.use_embeddings, self.num_top_entities, seed, self.index, self.redis,
         #                self.vector_space)
 
-        item = QASCItem(sampled.question, sampled.answer, sampled.gt_path)
+        item = QASCItem(sampled.question, sampled.answer, sampled.gt_path, sampled.facts)
         env = QASCInstanceEnvironment(item, 10, self.use_embeddings, self.num_top_entities, seed, self.index,
-                                      self.redis, self.vector_space, self.nlp)
+                                      self.redis, self.vector_space, self.nlp, sampled.facts)
 
         return env
 
@@ -84,7 +85,7 @@ class QASCInstanceFactory:
         nlp = spacy.load("en_core_web_sm")
 
         # vector_space = EmbeddingSpaceHelper(nlp)
-        vector_space = cast(KeyedVectors, KeyedVectors.load('data/glove.840B.300d.kv'))
+        vector_space = load_embeddings('data/glove.840B.300d.kv')
         # topics_helper = TopicsHelper.from_shelf(lda_path)
         # tfidf_helper = TfIdfHelper.build_tfidf(corpus_path)
         rng = utils.build_rng(seed)
@@ -153,7 +154,7 @@ class RlpytEnv(Env):
         # Test whether if the trial is finished
         reward = env.rl_reward()
         # Update the previous score, to prepare it for the next
-        env._prev_score = env.fr_score
+        env._prev_score = env.fr_score(normalize=True)
         done = env.status
 
         # Shape the reward if requested

@@ -71,7 +71,7 @@ class AirAgent(Agent):
 
             # Check the status of the search
             finished = env.status
-            outcome = env.fr_score #env.success
+            outcome = env.fr_score() #env.success
             path = env.explanation
 
             # Increment the iteration counter

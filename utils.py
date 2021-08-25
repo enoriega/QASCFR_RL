@@ -31,7 +31,7 @@ def build_results_frame(results: Mapping[ResultsKey, Results]) -> Tuple[DataFram
 
     def build_outcomes_row(key, result):
         """ Helper function to avoid caching the elements in a list to construct the data frame """
-        prob = key.problem
+        prob = key.item
         a = prob.question
         b = prob.answer
         seed = key.seed
@@ -43,7 +43,7 @@ def build_results_frame(results: Mapping[ResultsKey, Results]) -> Tuple[DataFram
 
     def build_queries_rows(key, result: Results):
         """ Helper function to avoid caching the elements in a list to construct the data frame """
-        prob = key.problem
+        prob = key.item
         a = prob.question
         b = prob.answer
         seed = key.seed
@@ -62,7 +62,7 @@ def build_results_frame(results: Mapping[ResultsKey, Results]) -> Tuple[DataFram
 
     def build_paths_rows(key, result: Results):
         """ Helper function to avoid caching the elements in a list to construct the data frame """
-        prob = key.problem
+        prob = key.item
         a = prob.question
         b = prob.answer
         seed = key.seed
