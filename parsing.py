@@ -71,6 +71,8 @@ def read_problems(path: Union[Path, str]) -> List[QASCItem]:
 
     with path.open('r') as f:
         data = [QASCItem.from_json_line(line) for line in f]
+        # Keep those with at least 10 elements in the facts field
+        data = [d for d in data if len(d.facts) >= 10]
 
     return data
 

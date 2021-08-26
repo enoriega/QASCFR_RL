@@ -113,7 +113,7 @@ class QASCInstanceEnvironment:
 
 
     @property
-    def query(self) -> Iterable[str]:
+    def query(self) -> Set[str]:
 
         # Terms of the question and answer:
         if len(self.explanation) == 0:
@@ -137,15 +137,11 @@ class QASCInstanceEnvironment:
 
     @property
     def changed_remaining(self):
-        if self.iterations == 1:
-            return True
-        elif len(self.doc_set) == 0:
-            return False
-        else:
-            prev = self._prev_remaining
-            curr = self.remaining
 
-            return curr != prev
+        prev = self._prev_remaining
+        curr = self.remaining
+
+        return curr != prev
 
     def _determine_outcome(self, query: Set[str], explanation: Sequence[str], language: Language) -> bool:
         """ Factored out this method to leverage the LRU decorator """
@@ -276,7 +272,7 @@ class QASCInstanceEnvironment:
 
     def ranked_docs(self) -> Sequence[Tuple[str, float]]:
         """ Rank the documents by their alignment score to the current query """
-        docs = [doc for doc in self.doc_set if doc not in self.explanation]  # Find the eligible docs
+        docs = [doc.text for doc in self.doc_universe if doc not in self.explanation]  # Find the eligible docs
 
         # Rank them by alignment
         scores = [nlp.air_s(self.remaining, e, self.embeddings) for e in preprocess(docs, self._language, stem=True)]

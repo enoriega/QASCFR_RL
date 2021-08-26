@@ -124,7 +124,7 @@ def build_and_train(slot_affinity_code: str,
         "entity_dropout": embeddings_dropout
     }
 
-    traj_cls = partial(FocusedReadingTrajInfo, num_top_entities)
+    traj_cls = partial(FocusedReadingTrajInfo)
 
     sampler = SerialSampler(
         EnvCls=RlpytEnv,

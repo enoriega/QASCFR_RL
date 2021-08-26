@@ -7,48 +7,54 @@ from rlpyt.utils.logging import logger
 from rlpyt.utils.prog_bar import ProgBarCounter
 
 from actions import QueryType
+from parsing import QASCItem
+
+from enum import Enum
+
+
+class RecallType(Enum):
+    Not = 0
+    Partial = 1
+    Total = 2
+
+def gt_match_type(instance, explanation):
+
+    counter = 0
+
+    for phrase in instance.gt_path:
+        if phrase in explanation:
+            counter += 1
+
+    kind = RecallType(counter)
+
+    return kind
 
 
 class FocusedReadingTrajInfo(TrajInfo):
     """TrajInfo class for use with Atari Env, to store raw game score separate
     from clipped reward signal."""
 
-    def __init__(self, num_entities, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.Papers = 0
-        self.Success = False  # True is finding the path
-        for ix in range(num_entities):
-            self.__dict__[f'QueryAnd_{ix}'] = 0
-            self.__dict__[f'QueryOr_{ix}'] = 0
-            self.__dict__[f'QuerySingleton_{ix}'] = 0
+        # self.Papers = 0
+        self.Success = int(False)  # True is finding the path
+        self.ExplanationSize = 0
+        self.PartialRecall = 0
+        self.TotalRecall = 0
+        self.Iterations = 0
 
-        self._num_entities = num_entities
+        #iterations, docs, success, partial_success, coverage, paths
+
 
     def step(self, observation, action, reward, done, agent_info, env_info):
         super().step(observation, action, reward, done, agent_info, env_info)
-        self.Papers += getattr(env_info, "papers", 0)
-        self.Success = env_info.outcome
-        qt = env_info.query_type
-        e_ix = env_info.query_entity
-
-        if qt == QueryType.And.value:
-            self.__dict__[f'QueryAnd_{e_ix}'] += 1
-        elif qt == QueryType.Or.value:
-            self.__dict__[f'QueryOr_{e_ix}'] += 1
-        elif qt == QueryType.Singleton.value:
-            self.__dict__[f'QuerySingleton_{e_ix}'] += 1
+        self.Success = int(env_info.outcome)
+        self.Iterations += 1
 
         if done:
-            num_queries = 0
-            for ix in range(self._num_entities):
-                num_queries += self.__dict__[f'QueryAnd_{ix}']
-                num_queries += self.__dict__[f'QueryOr_{ix}']
-                num_queries += self.__dict__[f'QuerySingleton_{ix}']
-
-            for ix in range(self._num_entities):
-                self.__dict__[f'QueryAnd_{ix}'] /= num_queries
-                self.__dict__[f'QueryOr_{ix}'] /= num_queries
-                self.__dict__[f'QuerySingleton_{ix}'] /= num_queries
+            self.ExplanationSize = env_info.explanation_size
+            self.PartialRecall = int(env_info.partial_recall)
+            self.TotalRecall = int(env_info.total_recall)
 
 
 class MinibatchRlEarlyStop(MinibatchRlEval):

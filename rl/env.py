@@ -1,7 +1,7 @@
 from collections import namedtuple
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple, NamedTuple, List, Union, Optional, cast
+from typing import Tuple, NamedTuple, List, Union, Optional
 
 import numpy as np
 import spacy
@@ -12,20 +12,20 @@ from rlpyt.spaces.float_box import FloatBox
 from rlpyt.spaces.int_box import IntBox
 from spacy.language import Language
 
+import nlp
 import parsing
 import utils
-from actions import Query, QueryType
+from environment import QASCItem, QASCInstanceEnvironment
 from machine_reading.ie import RedisWrapper
 from machine_reading.ir.es import QASCIndexSearcher
 from nlp import load_embeddings
-from parsing import QASCItem
-from environment import QASCItem, QASCInstanceEnvironment
 
 # from nlp import EmbeddingSpaceHelper
+from rl.aux import gt_match_type, RecallType
 
 Observation = np.ndarray
 
-EnvInfo = namedtuple("EnvInfo", "papers outcome query_type, query_entity")
+EnvInfo = namedtuple("EnvInfo", "chosen_rank outcome partial_recall total_recall explanation_size")
 
 
 @dataclass
@@ -130,13 +130,17 @@ class RlpytEnv(Env):
 
         env = self.instance
 
-        query = env.query
+        remaining = env.remaining
 
-        # Run it through lucene
-        docs = env.fetch_docs(query)
+        if len(env.explanation) == 0:
+            coverage = 0.
+        else:
+            coverage = nlp.air_coverage(env.query,
+                                        nlp.preprocess(env.explanation, env._language, stem=True))
 
-        # Reconcile the elements with the environment
-        env.add_docs(docs)
+            if len(remaining) <= 4:
+                env.expand_query()
+                query = env.query
 
         candidates = env.ranked_docs()
 
@@ -156,6 +160,9 @@ class RlpytEnv(Env):
         # Update the previous score, to prepare it for the next
         env._prev_score = env.fr_score(normalize=True)
         done = env.status
+        outcome = env.fr_score()  # env.success
+        path = env.explanation
+        env.iterations += 1
 
         # Shape the reward if requested
         if self._do_reward_shaping:
@@ -166,8 +173,24 @@ class RlpytEnv(Env):
         # Generate the environment observation
         obs = self.observe()
 
-        env_info = EnvInfo(papers=len(env.doc_set), outcome=env.success, query_type=int(QueryType.And),
-                           query_entity=int(action))
+        # Do some observation logging
+        item = env.item
+
+        partial_recall = False
+        total_recall = False
+
+        recall_type = gt_match_type(item, env.explanation)
+        if recall_type == RecallType.Total:
+            partial_recall = True
+            total_recall = True
+        elif recall_type == RecallType.Partial:
+            partial_recall = True
+
+        explanation_size = len(env.explanation)
+
+        env_info = EnvInfo(outcome=env.success, chosen_rank=action,
+                           partial_recall = partial_recall, total_recall = total_recall,
+                           explanation_size = explanation_size)
 
         return obs, np.float(reward), done, env_info
 
